@@ -114,6 +114,7 @@ Expected outputs per arch:
 - `.dmg`
 - `.zip`
 - `latest-mac.yml`
+- `.blockmap`
 - `verification-summary.json`
 - `stage-manifest.json`
 
@@ -137,16 +138,31 @@ The authority should be your `Developer ID Application` identity.
 
 If you need to release before notarization finishes, publish the signed mac assets first.
 
+First prepare the updater-compatible release bundle:
+
+```bash
+node scripts/prepare-macos-release-assets.mjs \
+  --input-root release/local-macos \
+  --output-dir release/local-macos/release-assets
+```
+
+This produces one merged `latest-mac.yml` plus hyphenated asset names that match what `electron-updater` requests.
+
 Create or update the GitHub release manually:
 
 ```bash
 gh release edit v<DESKTOP_VERSION> --notes-file /path/to/notes.md
 
 gh release upload v<DESKTOP_VERSION> \
-  'release/local-macos/x64/Paperclip Desktop-<DESKTOP_VERSION>.dmg' \
-  'release/local-macos/x64/Paperclip Desktop-<DESKTOP_VERSION>-mac.zip' \
-  'release/local-macos/arm64/Paperclip Desktop-<DESKTOP_VERSION>-arm64.dmg' \
-  'release/local-macos/arm64/Paperclip Desktop-<DESKTOP_VERSION>-arm64-mac.zip' \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>.dmg \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>.dmg.blockmap \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip.blockmap \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64.dmg \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64.dmg.blockmap \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip \
+  release/local-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip.blockmap \
+  release/local-macos/release-assets/latest-mac.yml \
   --clobber
 ```
 
@@ -276,6 +292,14 @@ ditto 'release/local-macos/x64/mac/Paperclip Desktop.app' 'release/notarized-mac
 ditto 'release/local-macos/arm64/mac-arm64/Paperclip Desktop.app' 'release/notarized-macos/arm64/mac-arm64/Paperclip Desktop.app'
 ```
 
+Prepare the updater-compatible notarized release bundle:
+
+```bash
+node scripts/prepare-macos-release-assets.mjs \
+  --input-root release/notarized-macos \
+  --output-dir release/notarized-macos/release-assets
+```
+
 ## Step 8: Verify The Final Notarized Outputs
 
 Run the stapled verifier:
@@ -289,6 +313,7 @@ Expected final output directories:
 
 - `release/notarized-macos/x64`
 - `release/notarized-macos/arm64`
+- `release/notarized-macos/release-assets`
 
 Expected final artifacts:
 
@@ -296,6 +321,11 @@ Expected final artifacts:
 - `Paperclip Desktop-<DESKTOP_VERSION>-mac.zip`
 - `Paperclip Desktop-<DESKTOP_VERSION>-arm64.dmg`
 - `Paperclip Desktop-<DESKTOP_VERSION>-arm64-mac.zip`
+- `Paperclip-Desktop-<DESKTOP_VERSION>.dmg`
+- `Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip`
+- `Paperclip-Desktop-<DESKTOP_VERSION>-arm64.dmg`
+- `Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip`
+- `latest-mac.yml`
 - `verification-summary.json`
 
 ## Step 9: Replace The GitHub Release Assets
@@ -306,10 +336,15 @@ Update release notes to reflect notarization completion, then upload the stapled
 gh release edit v<DESKTOP_VERSION> --notes-file /path/to/notarized-notes.md
 
 gh release upload v<DESKTOP_VERSION> \
-  'release/notarized-macos/x64/Paperclip Desktop-<DESKTOP_VERSION>.dmg' \
-  'release/notarized-macos/x64/Paperclip Desktop-<DESKTOP_VERSION>-mac.zip' \
-  'release/notarized-macos/arm64/Paperclip Desktop-<DESKTOP_VERSION>-arm64.dmg' \
-  'release/notarized-macos/arm64/Paperclip Desktop-<DESKTOP_VERSION>-arm64-mac.zip' \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>.dmg \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>.dmg.blockmap \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip.blockmap \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64.dmg \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64.dmg.blockmap \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip \
+  release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip.blockmap \
+  release/notarized-macos/release-assets/latest-mac.yml \
   --clobber
 ```
 
@@ -353,7 +388,8 @@ For the common case, use this order:
 6. monitor until both are `Accepted`
 7. staple local `.app` bundles
 8. repackage notarized ZIP/DMG
-9. replace release assets
+9. prepare the merged mac updater bundle
+10. replace release assets
 
 ## Guardrails
 
@@ -373,6 +409,7 @@ Primary scripts and workflows:
 - `.github/workflows/notarize-status.yml`
 - `scripts/release-macos-local.mjs`
 - `scripts/repackage-prebuilt-macos.mjs`
+- `scripts/prepare-macos-release-assets.mjs`
 - `scripts/verify-macos-release.mjs`
 
 Background docs:

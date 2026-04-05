@@ -14,6 +14,7 @@
     "start": "electron dist/main.js",
     "prepare-server": "node scripts/prepare-server.mjs",
     "build-ui": "node scripts/build-ui.mjs",
+    "prepare-release-assets:mac": "node scripts/prepare-macos-release-assets.mjs",
     "release:mac:local": "node scripts/release-macos-local.mjs",
     "release:mac:local:x64": "node scripts/release-macos-local.mjs --arch x64",
     "release:mac:local:arm64": "node scripts/release-macos-local.mjs --arch arm64",

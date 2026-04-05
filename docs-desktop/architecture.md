@@ -189,7 +189,7 @@ publish:
   releaseType: release
 ```
 
-`electron-builder` generates `latest.yml` / `latest-mac.yml` / `latest-linux.yml` manifests alongside the release assets. `electron-updater` fetches these manifests to determine if a newer version is available.
+`electron-builder` generates `latest.yml` / `latest-mac.yml` / `latest-linux.yml` manifests alongside the release assets. For macOS this repo merges the per-arch outputs into one published `latest-mac.yml` so both `x64` and `arm64` installs can resolve the correct ZIP from the same GitHub release. `electron-updater` fetches these manifests to determine if a newer version is available.
 
 ### Renderer integration
 
@@ -304,7 +304,7 @@ This ensures tools like `claude` CLI are discoverable by the server.
    ```bash
    git push origin master --tags
    ```
-4. The `release.yml` workflow triggers automatically, builds for all platforms, and publishes to GitHub Releases
+4. Run the manual `release.yml` workflow when you are ready to publish binaries to GitHub Releases
 
 ### Checking for upstream updates manually
 

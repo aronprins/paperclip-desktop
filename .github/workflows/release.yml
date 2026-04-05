@@ -94,10 +94,13 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm release:mac:local
 
+      - name: Prepare updater-compatible macOS release assets
+        run: node scripts/prepare-macos-release-assets.mjs --input-root release/local-macos --output-dir release/mac-release-assets
+
       - uses: actions/upload-artifact@v4
         with:
-          name: release-mac-staged
-          path: release/local-macos
+          name: release-mac
+          path: release/mac-release-assets
           if-no-files-found: error
 
       - name: Clean up Apple signing assets

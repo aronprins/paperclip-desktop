@@ -92,8 +92,8 @@ jobs:
               --output-format json > "$output_path"
           }
 
-          submit_zip "x64" "$(find notarization-input -type f -name 'Paperclip.Desktop-*-mac.zip' ! -name '*arm64*' | head -n 1)"
-          submit_zip "arm64" "$(find notarization-input -type f -name 'Paperclip.Desktop-*-arm64-mac.zip' | head -n 1)"
+          submit_zip "x64" "$(find notarization-input -type f -name 'Paperclip-Desktop-*-mac.zip' ! -name '*arm64*' | head -n 1)"
+          submit_zip "arm64" "$(find notarization-input -type f -name 'Paperclip-Desktop-*-arm64-mac.zip' | head -n 1)"
 
           python - <<'PY'
           import json
