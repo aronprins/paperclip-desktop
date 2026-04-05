@@ -3,12 +3,14 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const projectRoot = resolve(__dirname, "..");
 const args = process.argv.slice(2);
 const supportedArchs = ["x64", "arm64"];
+const topLevelKeyOrder = ["version", "files", "path", "sha512", "releaseDate"];
+const fileKeyOrder = ["url", "sha512", "size"];
 
 function takeOption(name) {
   const index = args.indexOf(name);
@@ -119,22 +121,30 @@ function formatScalar(value) {
 }
 
 function serializeLatestMacManifest(manifest) {
-  const lines = [
-    `version: ${formatScalar(manifest.version)}`,
-    "files:",
+  const lines = [];
+  const topLevelKeys = [
+    ...topLevelKeyOrder.filter((key) => key in manifest),
+    ...Object.keys(manifest).filter((key) => !topLevelKeyOrder.includes(key)),
   ];
 
-  for (const file of manifest.files) {
-    lines.push(`  - url: ${formatScalar(file.url)}`);
-    lines.push(`    sha512: ${formatScalar(file.sha512)}`);
-    lines.push(`    size: ${formatScalar(file.size)}`);
-  }
+  for (const key of topLevelKeys) {
+    if (key === "files") {
+      lines.push("files:");
+      for (const file of manifest.files) {
+        const keys = [
+          ...fileKeyOrder.filter((fileKey) => fileKey in file),
+          ...Object.keys(file).filter((fileKey) => !fileKeyOrder.includes(fileKey)),
+        ];
 
-  lines.push(`path: ${formatScalar(manifest.path)}`);
-  lines.push(`sha512: ${formatScalar(manifest.sha512)}`);
+        keys.forEach((fileKey, index) => {
+          const prefix = index === 0 ? "  - " : "    ";
+          lines.push(`${prefix}${fileKey}: ${formatScalar(file[fileKey])}`);
+        });
+      }
+      continue;
+    }
 
-  if (manifest.releaseDate) {
-    lines.push(`releaseDate: ${formatScalar(manifest.releaseDate)}`);
+    lines.push(`${key}: ${formatScalar(manifest[key])}`);
   }
 
   return `${lines.join("\n")}\n`;
@@ -213,9 +223,29 @@ function latestDate(values) {
     .at(-1);
 }
 
-function main() {
-  const inputRoot = resolve(projectRoot, requireOption("--input-root"));
-  const outputDir = resolve(projectRoot, requireOption("--output-dir"));
+function ensureManifestMetadataParity(manifests) {
+  const knownKeys = new Set(["version", "files", "path", "sha512", "releaseDate"]);
+  const baseline = manifests[0].manifest;
+
+  for (const { arch, manifest } of manifests.slice(1)) {
+    const keys = new Set([
+      ...Object.keys(baseline).filter((key) => !knownKeys.has(key)),
+      ...Object.keys(manifest).filter((key) => !knownKeys.has(key)),
+    ]);
+
+    for (const key of keys) {
+      const baselineValue = JSON.stringify(baseline[key]);
+      const manifestValue = JSON.stringify(manifest[key]);
+      if (baselineValue !== manifestValue) {
+        throw new Error(`Cannot merge latest-mac.yml files with different ${key} values (x64 vs ${arch}).`);
+      }
+    }
+  }
+}
+
+export function prepareMacosReleaseAssets({ inputRoot, outputDir }) {
+  inputRoot = resolve(projectRoot, inputRoot);
+  outputDir = resolve(projectRoot, outputDir);
 
   rmSync(outputDir, { recursive: true, force: true });
   mkdirSync(outputDir, { recursive: true });
@@ -237,6 +267,7 @@ function main() {
   if (versions.size !== 1) {
     throw new Error(`Cannot merge latest-mac.yml files with different versions: ${Array.from(versions).join(", ")}`);
   }
+  ensureManifestMetadataParity(manifests);
 
   const mergedFiles = manifests.flatMap(({ manifest }) => {
     if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
@@ -263,6 +294,7 @@ function main() {
     ?? mergedFiles[0];
 
   const mergedManifest = {
+    ...manifests[0].manifest,
     version: manifests[0].manifest.version,
     files: mergedFiles,
     path: preferredZip.url,
@@ -283,9 +315,18 @@ function main() {
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+function main() {
+  prepareMacosReleaseAssets({
+    inputRoot: requireOption("--input-root"),
+    outputDir: requireOption("--output-dir"),
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
