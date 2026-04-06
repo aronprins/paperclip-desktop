@@ -36,6 +36,8 @@ Under the hood, on launch the app:
 
 When you quit the app, the server is cleanly shut down.
 
+If you set `PAPERCLIP_SERVER_URL`, the app will skip the bundled local server and load that remote Paperclip instance instead.
+
 > For everything Paperclip itself can do — orchestrating AI agents, running autonomous companies, governance, budgets, org charts, etc. — see the **[upstream Paperclip repo](https://github.com/paperclipai/paperclip)**. This project does not modify or extend Paperclip's functionality; it only packages it.
 
 <br/>
@@ -99,6 +101,12 @@ pnpm build-ui          # Stage the Paperclip UI
 pnpm pack              # Build an unpacked app directory (no installer)
 pnpm dist              # Build full installers for the current platform
 pnpm dist:mac          # macOS (.dmg + .zip, signed/notarized via local script)
+```
+
+To run the desktop shell against your own Paperclip server:
+
+```bash
+PAPERCLIP_SERVER_URL=http://72.61.251.227:3100/ pnpm dev
 ```
 
 Key files:

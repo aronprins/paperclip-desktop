@@ -16,6 +16,23 @@ const PREFERRED_PORT = 3100;
 const SERVER_STARTUP_TIMEOUT_MS = 60_000;
 const POLL_INTERVAL_MS = 400;
 const PID_FILE_NAME = "paperclip-electron.pid";
+const PAPERCLIP_SERVER_URL = process.env.PAPERCLIP_SERVER_URL?.trim();
+
+let remoteServerConfigError: Error | null = null;
+const REMOTE_SERVER = PAPERCLIP_SERVER_URL
+  ? (() => {
+      try {
+        const parsed = new URL(PAPERCLIP_SERVER_URL);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          throw new Error(`PAPERCLIP_SERVER_URL must use http or https: ${PAPERCLIP_SERVER_URL}`);
+        }
+        return parsed;
+      } catch (error) {
+        remoteServerConfigError = error instanceof Error ? error : new Error(String(error));
+        return null;
+      }
+    })()
+  : null;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -65,10 +82,36 @@ async function findFreePort(startPort: number): Promise<number> {
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = PREFERRED_PORT;
 
+function getLaunchUrl(port: number): string {
+  return REMOTE_SERVER ? REMOTE_SERVER.toString() : `http://localhost:${port}`;
+}
+
+function getAllowedOrigin(port: number): string {
+  return REMOTE_SERVER ? REMOTE_SERVER.origin : `http://localhost:${port}`;
+}
+
+function isSameOriginUrl(url: string, allowedOrigin: string): boolean {
+  try {
+    return new URL(url).origin === allowedOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function getRemoteEndpoint(): { host: string; port: number } | null {
+  if (!REMOTE_SERVER) return null;
+  const port = REMOTE_SERVER.port
+    ? Number.parseInt(REMOTE_SERVER.port, 10)
+    : REMOTE_SERVER.protocol === "https:"
+      ? 443
+      : 80;
+  return { host: REMOTE_SERVER.hostname, port };
+}
+
 /**
- * Wait for a TCP port to accept connections.
+ * Wait for a TCP endpoint to accept connections.
  */
-function waitForPort(port: number, timeoutMs: number): Promise<void> {
+function waitForPort(host: string, port: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
 
@@ -78,7 +121,7 @@ function waitForPort(port: number, timeoutMs: number): Promise<void> {
         return;
       }
 
-      const sock = net.createConnection({ port, host: "127.0.0.1" }, () => {
+      const sock = net.createConnection({ port, host }, () => {
         sock.destroy();
         resolve();
       });
@@ -341,7 +384,7 @@ function sendSplashStatus(step: string, detail: string, progress: number) {
   }
 }
 
-async function createSplashWindow(): Promise<BrowserWindow> {
+async function createSplashWindow(isRemoteMode: boolean): Promise<BrowserWindow> {
   const splash = new BrowserWindow({
     width: 480,
     height: 380,
@@ -499,11 +542,11 @@ async function createSplashWindow(): Promise<BrowserWindow> {
     </div>
     <div class="step" id="step-database" data-key="database">
       <div class="step-icon"><div class="pending"></div></div>
-      <div><div class="step-label">Starting database</div></div>
+      <div><div class="step-label">${isRemoteMode ? "Connecting to remote server" : "Starting database"}</div></div>
     </div>
     <div class="step" id="step-server" data-key="server">
       <div class="step-icon"><div class="pending"></div></div>
-      <div><div class="step-label">Starting server</div></div>
+      <div><div class="step-label">${isRemoteMode ? "Waiting for UI" : "Starting server"}</div></div>
     </div>
     <div class="step" id="step-ready" data-key="ready">
       <div class="step-icon"><div class="pending"></div></div>
@@ -588,7 +631,7 @@ async function createSplashWindow(): Promise<BrowserWindow> {
 
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow(port: number): BrowserWindow {
+function createWindow(targetUrl: string, allowedOrigin: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -607,31 +650,21 @@ function createWindow(port: number): BrowserWindow {
     win.show();
   });
 
-  // Block navigation to non-localhost URLs to prevent preload script exposure
+  // Keep the app pinned to its configured origin and hand off other links to the browser.
   win.webContents.on("will-navigate", (e, url) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-        e.preventDefault();
+    if (!isSameOriginUrl(url, allowedOrigin)) {
+      e.preventDefault();
+      if (url.startsWith("http://") || url.startsWith("https://")) {
         shell.openExternal(url);
       }
-    } catch {
-      e.preventDefault();
     }
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     // Only allow opening external http/https links in the system browser
-    try {
-      const parsed = new URL(url);
-      if (
-        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-        parsed.hostname !== "localhost" &&
-        parsed.hostname !== "127.0.0.1"
-      ) {
-        shell.openExternal(url);
-      }
-    } catch { /* malformed URL, ignore */ }
+    if (!isSameOriginUrl(url, allowedOrigin) && (url.startsWith("http://") || url.startsWith("https://"))) {
+      shell.openExternal(url);
+    }
     return { action: "deny" };
   });
 
@@ -647,105 +680,134 @@ let isQuitting = false;
 app.setName("Paperclip");
 
 app.whenReady().then(async () => {
-  // Clean up any orphaned server from a previous crash
-  killOrphanedServer();
+  if (remoteServerConfigError) {
+    throw remoteServerConfigError;
+  }
 
-  const splash = await createSplashWindow();
+  const isRemoteMode = REMOTE_SERVER !== null;
+
+  if (!isRemoteMode) {
+    // Clean up any orphaned server from a previous crash
+    killOrphanedServer();
+  }
+
+  const splash = await createSplashWindow(isRemoteMode);
 
   try {
     // Step 1: Initializing
     sendSplashStatus("init", "Preparing environment\u2026", 5);
 
-    // Step 1b: Find a free port before spawning the server
-    serverPort = await findFreePort(PREFERRED_PORT);
-    if (serverPort !== PREFERRED_PORT) {
-      console.log(`Port ${PREFERRED_PORT} in use, using ${serverPort} instead`);
+    let targetUrl = getLaunchUrl(serverPort);
+    let allowedOrigin = getAllowedOrigin(serverPort);
+
+    if (isRemoteMode) {
+      const remoteEndpoint = getRemoteEndpoint();
+      if (!remoteEndpoint) {
+        throw new Error("Remote mode was enabled, but the server URL could not be resolved.");
+      }
+
+      targetUrl = getLaunchUrl(serverPort);
+      allowedOrigin = getAllowedOrigin(serverPort);
+
+      sendSplashStatus("database", "Connecting to remote server\u2026", 15);
+      sendSplashStatus("server", `Waiting for ${REMOTE_SERVER!.hostname}:${remoteEndpoint.port}\u2026`, 45);
+      await waitForPort(remoteEndpoint.host, remoteEndpoint.port, SERVER_STARTUP_TIMEOUT_MS);
+      sendSplashStatus("server", "Remote server is ready", 70);
+    } else {
+      // Step 1b: Find a free port before spawning the server
+      serverPort = await findFreePort(PREFERRED_PORT);
+      if (serverPort !== PREFERRED_PORT) {
+        console.log(`Port ${PREFERRED_PORT} in use, using ${serverPort} instead`);
+      }
+      sendSplashStatus("init", "Preparing environment\u2026", 10);
+
+      // Step 2: Starting database
+      sendSplashStatus("database", "Launching embedded PostgreSQL\u2026", 15);
+
+      serverProcess = startServer(serverPort);
+
+      // Track progress - only allow forward movement to prevent visual regression
+      let dbReady = false;
+      let serverListening = false;
+      let lastProgress = 15;
+
+      const updateProgress = (step: string, detail: string, progress: number) => {
+        if (progress > lastProgress) {
+          lastProgress = progress;
+          sendSplashStatus(step, detail, progress);
+        }
+      };
+
+      // Accumulate output for error reporting; also write to a log file
+      const serverOutputLines: string[] = [];
+      const logFile = path.join(app.getPath("userData"), "server.log");
+      const logStream = fs.createWriteStream(logFile, { flags: "a" });
+      logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
+
+      const onServerData = (chunk: Buffer) => {
+        const text = chunk.toString();
+        serverOutputLines.push(...text.split("\n").filter(Boolean));
+        if (serverOutputLines.length > 200) serverOutputLines.splice(0, serverOutputLines.length - 200);
+        logStream.write(text);
+
+        // Match specific Paperclip server log markers
+        if (!dbReady && (text.includes("PostgreSQL ready") || text.includes("migration"))) {
+          dbReady = true;
+          updateProgress("database", "Running migrations\u2026", 35);
+        }
+
+        if (!serverListening && text.includes("Server listening on")) {
+          serverListening = true;
+          updateProgress("server", "Server is starting\u2026", 55);
+        }
+      };
+
+      serverProcess.stdout?.on("data", onServerData);
+      serverProcess.stderr?.on("data", onServerData);
+
+      serverProcess.on("exit", (code, signal) => {
+        logStream.end();
+        if (serverProcess) {
+          const tail = serverOutputLines.slice(-30).join("\n");
+          console.error(`Server exited unexpectedly (code=${code}, signal=${signal})\n${tail}`);
+          dialog
+            .showMessageBox({
+              type: "error",
+              title: "Server Error",
+              message: "The Paperclip server stopped unexpectedly.",
+              detail: `Exit code: ${code}, signal: ${signal}\n\nLog: ${logFile}\n\n${tail}`,
+              buttons: ["Quit"],
+            })
+            .then(() => app.quit());
+        }
+      });
+
+      // Animate progress while waiting for the port
+      const progressInterval = setInterval(() => {
+        if (!dbReady) {
+          updateProgress("database", "Launching embedded PostgreSQL\u2026", 20);
+        } else if (!serverListening) {
+          updateProgress("server", "Waiting for server\u2026", 50);
+        }
+      }, 2000);
+
+      updateProgress("server", "Waiting for server\u2026", 45);
+
+      // Step 3: Wait for server
+      await waitForPort("127.0.0.1", serverPort, SERVER_STARTUP_TIMEOUT_MS);
+
+      clearInterval(progressInterval);
+      sendSplashStatus("server", "Server is ready", 70);
+
+      targetUrl = getLaunchUrl(serverPort);
+      allowedOrigin = getAllowedOrigin(serverPort);
     }
-    sendSplashStatus("init", "Preparing environment\u2026", 10);
-
-    // Step 2: Starting database
-    sendSplashStatus("database", "Launching embedded PostgreSQL\u2026", 15);
-
-    serverProcess = startServer(serverPort);
-
-    // Track progress — only allow forward movement to prevent visual regression
-    let dbReady = false;
-    let serverListening = false;
-    let lastProgress = 15;
-
-    const updateProgress = (step: string, detail: string, progress: number) => {
-      if (progress > lastProgress) {
-        lastProgress = progress;
-        sendSplashStatus(step, detail, progress);
-      }
-    };
-
-    // Accumulate output for error reporting; also write to a log file
-    const serverOutputLines: string[] = [];
-    const logFile = path.join(app.getPath("userData"), "server.log");
-    const logStream = fs.createWriteStream(logFile, { flags: "a" });
-    logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
-
-    const onServerData = (chunk: Buffer) => {
-      const text = chunk.toString();
-      serverOutputLines.push(...text.split("\n").filter(Boolean));
-      if (serverOutputLines.length > 200) serverOutputLines.splice(0, serverOutputLines.length - 200);
-      logStream.write(text);
-
-      // Match specific Paperclip server log markers
-      if (!dbReady && (text.includes("PostgreSQL ready") || text.includes("migration"))) {
-        dbReady = true;
-        updateProgress("database", "Running migrations\u2026", 35);
-      }
-
-      if (!serverListening && text.includes("Server listening on")) {
-        serverListening = true;
-        updateProgress("server", "Server is starting\u2026", 55);
-      }
-    };
-
-    serverProcess.stdout?.on("data", onServerData);
-    serverProcess.stderr?.on("data", onServerData);
-
-    serverProcess.on("exit", (code, signal) => {
-      logStream.end();
-      if (serverProcess) {
-        const tail = serverOutputLines.slice(-30).join("\n");
-        console.error(`Server exited unexpectedly (code=${code}, signal=${signal})\n${tail}`);
-        dialog
-          .showMessageBox({
-            type: "error",
-            title: "Server Error",
-            message: "The Paperclip server stopped unexpectedly.",
-            detail: `Exit code: ${code}, signal: ${signal}\n\nLog: ${logFile}\n\n${tail}`,
-            buttons: ["Quit"],
-          })
-          .then(() => app.quit());
-      }
-    });
-
-    // Animate progress while waiting for the port
-    const progressInterval = setInterval(() => {
-      if (!dbReady) {
-        updateProgress("database", "Launching embedded PostgreSQL\u2026", 20);
-      } else if (!serverListening) {
-        updateProgress("server", "Waiting for server\u2026", 50);
-      }
-    }, 2000);
-
-    updateProgress("server", "Waiting for server\u2026", 45);
-
-    // Step 3: Wait for server
-    await waitForPort(serverPort, SERVER_STARTUP_TIMEOUT_MS);
-
-    clearInterval(progressInterval);
-    sendSplashStatus("server", "Server is ready", 70);
 
     // Step 4: Loading interface
     sendSplashStatus("ready", "Loading the UI\u2026", 80);
 
-    mainWindow = createWindow(serverPort);
-    mainWindow.loadURL(`http://localhost:${serverPort}`);
+    mainWindow = createWindow(targetUrl, allowedOrigin);
+    mainWindow.loadURL(targetUrl);
 
     mainWindow.webContents.once("did-finish-load", () => {
       sendSplashStatus("ready", "Almost there\u2026", 95);
@@ -775,7 +837,7 @@ app.whenReady().then(async () => {
     await dialog.showMessageBox({
       type: "error",
       title: "Startup Error",
-      message: "Failed to start the Paperclip server.",
+      message: isRemoteMode ? "Failed to connect to the Paperclip server." : "Failed to start the Paperclip server.",
       detail: String(err),
       buttons: ["Quit"],
     });
@@ -786,9 +848,11 @@ app.whenReady().then(async () => {
 
 // macOS: re-create window when dock icon clicked
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0 && serverProcess) {
-    mainWindow = createWindow(serverPort);
-    mainWindow.loadURL(`http://localhost:${serverPort}`);
+  if (BrowserWindow.getAllWindows().length === 0) {
+    const targetUrl = getLaunchUrl(serverPort);
+    const allowedOrigin = getAllowedOrigin(serverPort);
+    mainWindow = createWindow(targetUrl, allowedOrigin);
+    mainWindow.loadURL(targetUrl);
   }
 });
 

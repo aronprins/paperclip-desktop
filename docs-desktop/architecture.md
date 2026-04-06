@@ -4,7 +4,7 @@
 
 Paperclip Desktop is a standalone Electron wrapper around the [Paperclip](https://github.com/paperclipai/paperclip) server. It consumes `@paperclipai/server` and related packages from npm — it does **not** contain the engine source code.
 
-The Electron app spawns the Paperclip server as a child process and loads the UI via HTTP on localhost. It ships a bundled Node.js binary so end users don't need Node installed.
+The Electron app normally spawns the Paperclip server as a child process and loads the UI via HTTP on localhost. If `PAPERCLIP_SERVER_URL` is set, it skips the local server and loads that remote origin instead. It ships a bundled Node.js binary so end users don't need Node installed.
 
 ## Repository structure
 
@@ -61,10 +61,10 @@ Contents/Resources/
 ```
 
 1. Electron starts, creates a splash window with progress steps
-2. Finds a free TCP port (starting from 3100)
-3. Spawns `node server/dist/index.js` with env vars: `PORT`, `PAPERCLIP_HOME`, `PAPERCLIP_MIGRATION_AUTO_APPLY=true`, enriched `PATH`
-4. Waits for the server to accept connections (60s timeout)
-5. Creates the main BrowserWindow, loads `http://localhost:{port}`
+2. If running locally, finds a free TCP port (starting from 3100)
+3. If running locally, spawns `node server/dist/index.js` with env vars: `PORT`, `PAPERCLIP_HOME`, `PAPERCLIP_MIGRATION_AUTO_APPLY=true`, enriched `PATH`
+4. Waits for the configured server endpoint to accept connections (60s timeout)
+5. Creates the main BrowserWindow, loads the local or remote Paperclip URL
 6. Destroys the splash, shows the main window
 7. Initialises the auto-updater (checks GitHub Releases)
 
