@@ -18,6 +18,7 @@ import path from "node:path";
 import treeKill from "tree-kill";
 import { initAutoUpdater } from "./updater";
 import { getLauncherHtml } from "./launcher-html";
+import { handleSwipeNavigation } from "./navigation-gestures";
 import {
   shouldHandleTrackedServerExit,
   shouldKillSupersededServer,
@@ -767,6 +768,12 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
   win.webContents.on("will-attach-webview", (event) => {
     event.preventDefault();
   });
+
+  if (process.platform === "darwin") {
+    win.on("swipe", (_event, direction) => {
+      handleSwipeNavigation(direction, win.webContents.navigationHistory);
+    });
+  }
 }
 
 function createMainWindow(input: {

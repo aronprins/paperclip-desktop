@@ -147,11 +147,12 @@ export default async function afterPack(context) {
     ""
   );
 
-  if (!signingIdentity) {
-    throw new Error("macOS release signing requires APPLE_CODESIGN_IDENTITY or CSC_NAME.");
-  }
-
   stripBundleMetadata(appPath);
+
+  if (!signingIdentity) {
+    console.log("[after-pack] No macOS signing identity configured, skipping nested runtime signing.");
+    return;
+  }
 
   if (!existsSync(appServerPath)) {
     console.log("[after-pack] No app-server bundle found, skipping nested runtime signing.");

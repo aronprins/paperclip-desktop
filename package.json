@@ -15,7 +15,7 @@
     "prepare-server": "node scripts/prepare-server.mjs",
     "build-ui": "node scripts/build-ui.mjs",
     "prepare-release-assets:mac": "node scripts/prepare-macos-release-assets.mjs",
-    "test:connections": "pnpm build && node --test test/connection-validate.test.mjs test/connection-preflight.test.mjs test/connection-profiles.test.mjs test/window-policy.test.mjs test/local-server-lifecycle.test.mjs test/local-server-health.test.mjs",
+    "test:connections": "pnpm build && node --test test/connection-validate.test.mjs test/connection-preflight.test.mjs test/connection-profiles.test.mjs test/window-policy.test.mjs test/navigation-gestures.test.mjs test/local-server-lifecycle.test.mjs test/local-server-health.test.mjs",
     "test:prepare-release-assets:mac": "node --test test/prepare-macos-release-assets.test.mjs",
     "release:mac:local": "node scripts/release-macos-local.mjs",
     "release:mac:local:x64": "node scripts/release-macos-local.mjs --arch x64",
