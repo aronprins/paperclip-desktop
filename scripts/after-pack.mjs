@@ -146,11 +146,19 @@ export default async function afterPack(context) {
     process.env.CSC_NAME?.trim() ||
     ""
   );
+  const allowUnsignedMacBuild = process.env.ALLOW_UNSIGNED_MACOS_BUILD === "true";
 
   stripBundleMetadata(appPath);
 
   if (!signingIdentity) {
-    console.log("[after-pack] No macOS signing identity configured, skipping nested runtime signing.");
+    if (!allowUnsignedMacBuild) {
+      throw new Error(
+        "macOS release signing requires APPLE_CODESIGN_IDENTITY or CSC_NAME. " +
+        "Set ALLOW_UNSIGNED_MACOS_BUILD=true only for explicit local unsigned builds.",
+      );
+    }
+
+    console.log("[after-pack] Unsigned macOS build explicitly allowed, skipping nested runtime signing.");
     return;
   }
 
