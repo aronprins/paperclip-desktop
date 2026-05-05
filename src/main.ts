@@ -14,6 +14,7 @@ import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import treeKill from "tree-kill";
 import { checkForUpdatesFromMenu, initAutoUpdater } from "./updater";
@@ -227,6 +228,10 @@ function findNodeBinary(): string {
 }
 
 function resolveShellPath(): string {
+  if (process.platform === "win32") {
+    return process.env.PATH ?? "";
+  }
+
   const fallbackDirs = [
     "/usr/local/bin",
     "/opt/homebrew/bin",
@@ -308,11 +313,13 @@ function killOrphanedServer(): void {
 }
 
 function resolvePaperclipHome(): string {
-  const home = process.env.HOME ?? "";
-  const defaultHome = path.join(home, ".paperclip");
-  const defaultInstance = path.join(defaultHome, "instances", "default", "db");
-  if (home && fs.existsSync(defaultInstance)) {
-    return defaultHome;
+  const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+  if (home) {
+    const defaultHome = path.join(home, ".paperclip");
+    const defaultInstance = path.join(defaultHome, "instances", "default", "db");
+    if (fs.existsSync(defaultInstance)) {
+      return defaultHome;
+    }
   }
   return app.getPath("userData");
 }
@@ -1438,11 +1445,152 @@ function rebuildAppMenu(): void {
             void shell.openExternal("https://docs.paperclip.ing/");
           },
         },
+        { type: "separator" },
+        {
+          label: "Open Application Logs",
+          click: () => {
+            void shell.openPath(app.getPath("userData"));
+          },
+        },
+        {
+          label: "Reset Local Data (Repair)...",
+          click: () => {
+            void confirmAndResetLocalData();
+          },
+        },
+        ...(process.platform === "win32"
+          ? [
+              { type: "separator" as const },
+              {
+                label: "Uninstall Paperclip...",
+                click: () => {
+                  void launchWindowsUninstaller();
+                },
+              },
+            ]
+          : []),
       ],
     },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ---------------------------------------------------------------------------
+// Repair / Uninstall (Windows)
+// ---------------------------------------------------------------------------
+
+async function confirmAndResetLocalData(): Promise<void> {
+  const parent = BrowserWindow.getFocusedWindow() ?? mainWindow ?? launcherWindow ?? undefined;
+  const userData = app.getPath("userData");
+  const home = os.homedir() || process.env.USERPROFILE || process.env.HOME || "";
+  const paperclipHome = home ? path.join(home, ".paperclip") : "";
+
+  const detail = [
+    "This will close Paperclip, stop the embedded server, and delete:",
+    `  • ${userData}`,
+    paperclipHome ? `  • ${paperclipHome}` : "",
+    "",
+    "Your local Paperclip databases, saved connections, and cached sessions will be lost.",
+    "Remote sign-ins on saved profiles will need to be repeated.",
+  ].filter(Boolean).join("\n");
+
+  const opts = {
+    type: "warning" as const,
+    title: "Reset Local Data",
+    message: "Reset all local Paperclip data?",
+    detail,
+    buttons: ["Reset and Quit", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  };
+
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, opts)
+    : await dialog.showMessageBox(opts);
+
+  if (response !== 0) {
+    return;
+  }
+
+  isQuitting = true;
+  await killServer();
+
+  const targets = [userData, paperclipHome].filter(Boolean);
+  for (const target of targets) {
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`Failed to remove ${target}:`, err);
+    }
+  }
+
+  app.relaunch();
+  app.exit(0);
+}
+
+async function launchWindowsUninstaller(): Promise<void> {
+  if (process.platform !== "win32") return;
+
+  const parent = BrowserWindow.getFocusedWindow() ?? mainWindow ?? launcherWindow ?? undefined;
+  const opts = {
+    type: "question" as const,
+    title: "Uninstall Paperclip",
+    message: "Uninstall Paperclip Desktop?",
+    detail: "Paperclip will quit and the Windows uninstaller will launch. You'll be asked whether to also delete your local data.",
+    buttons: ["Open Uninstaller", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  };
+
+  const { response } = parent
+    ? await dialog.showMessageBox(parent, opts)
+    : await dialog.showMessageBox(opts);
+
+  if (response !== 0) return;
+
+  const exeDir = path.dirname(app.getPath("exe"));
+  const candidates = [
+    path.join(exeDir, "Uninstall Paperclip Desktop.exe"),
+    path.join(exeDir, `Uninstall ${app.getName()}.exe`),
+  ];
+
+  let uninstaller: string | null = null;
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      uninstaller = candidate;
+      break;
+    }
+  }
+
+  if (!uninstaller) {
+    try {
+      const entries = fs.readdirSync(exeDir);
+      const match = entries.find((entry) => /^Uninstall .*\.exe$/i.test(entry));
+      if (match) {
+        uninstaller = path.join(exeDir, match);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!uninstaller) {
+    await dialog.showMessageBox({
+      type: "info",
+      title: "Uninstaller Not Found",
+      message: "Could not find the uninstaller next to the app.",
+      detail: "If you're running the portable build, just delete the .exe to remove Paperclip. Otherwise uninstall via Settings → Apps → Installed apps → Paperclip Desktop.",
+    });
+    return;
+  }
+
+  isQuitting = true;
+  await killServer();
+  spawn(uninstaller, [], { detached: true, stdio: "ignore" }).unref();
+  app.exit(0);
 }
 
 function buildConnectionMenuItems(): MenuItemConstructorOptions[] {

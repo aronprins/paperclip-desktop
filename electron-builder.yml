@@ -109,6 +109,16 @@ nsis:
   deleteAppDataOnUninstall: false
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  uninstallDisplayName: ${productName} ${version}
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Paperclip Desktop
+  include: build/installer.nsh
+  artifactName: "Paperclip-Desktop-Setup-${version}.${ext}"
+  differentialPackage: true
+
+portable:
+  artifactName: "Paperclip-Desktop-Portable-${version}.${ext}"
 
 # ─── Linux ───────────────────────────────────────────────────────────────────
 
