@@ -48,11 +48,21 @@ import type {
 // ---------------------------------------------------------------------------
 
 const PREFERRED_PORT = 3100;
-const SERVER_STARTUP_TIMEOUT_MS = 60_000;
+// Embedded Postgres initdb on Windows can take 30-60s alone before any
+// migrations run; on slower disks or with antivirus scanning every binary
+// 60s isn't enough. 5 minutes covers the cold-start + 75-migration first run.
+const SERVER_STARTUP_TIMEOUT_MS = 300_000;
 const POLL_INTERVAL_MS = 400;
 const PID_FILE_NAME = "paperclip-electron.pid";
 const LOCAL_SERVER_HEALTH_POLL_INTERVAL_MS = 30_000;
 const LOCAL_SERVER_HEALTH_TIMEOUT_MS = 5_000;
+// The bundled @paperclipai/server uses pino with a file destination, so
+// stdout from the spawned child is mostly silent in production. We tail
+// this inner log instead to drive the boot progress UI and to surface
+// real errors when the process dies before opening its port.
+const INNER_SERVER_LOG_RELPATH = path.join("instances", "default", "logs", "server.log");
+const INNER_SERVER_LOG_TAIL_INTERVAL_MS = 300;
+const INNER_SERVER_LOG_TAIL_BYTES = 16_384;
 
 // ---------------------------------------------------------------------------
 // Process-global state
@@ -196,21 +206,29 @@ function findNodeBinary(): string {
   );
 
   try {
-    fs.accessSync(bundledNode, fs.constants.X_OK);
+    // On Windows X_OK only checks the read bit, but accessSync still
+    // confirms the file exists and is readable, which is what matters.
+    fs.accessSync(bundledNode, fs.constants.R_OK);
     return bundledNode;
   } catch {
-    // ignore
+    // fall through to system search
+  }
+
+  if (isWindows) {
+    return "node.exe";
   }
 
   const candidates: string[] = [];
-  const home = process.env.HOME ?? "";
-  const nvmDir = process.env.NVM_DIR ?? path.join(home, ".nvm");
+  const home = os.homedir() || process.env.HOME || "";
+  const nvmDir = process.env.NVM_DIR ?? (home ? path.join(home, ".nvm") : "");
 
-  try {
-    const version = fs.readFileSync(path.join(nvmDir, "alias", "default"), "utf8").trim();
-    candidates.push(path.join(nvmDir, "versions", "node", version, "bin", "node"));
-  } catch {
-    // ignore
+  if (nvmDir) {
+    try {
+      const version = fs.readFileSync(path.join(nvmDir, "alias", "default"), "utf8").trim();
+      candidates.push(path.join(nvmDir, "versions", "node", version, "bin", "node"));
+    } catch {
+      // ignore
+    }
   }
 
   candidates.push("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node");
@@ -225,6 +243,81 @@ function findNodeBinary(): string {
   }
 
   return "node";
+}
+
+interface ServerEnvironmentValidation {
+  ok: boolean;
+  reason?: string;
+  detail?: string;
+  nodeBinary: string;
+  serverEntry: string;
+  paperclipHome: string;
+}
+
+function validateServerEnvironment(): ServerEnvironmentValidation {
+  const root = getAppRoot();
+  const nodeBinary = findNodeBinary();
+  const serverEntry = app.isPackaged
+    ? path.join(root, "server", "dist", "index.js")
+    : path.join(root, "node_modules", "@paperclipai", "server", "dist", "index.js");
+  const paperclipHome = resolvePaperclipHome();
+
+  if (app.isPackaged) {
+    try {
+      fs.accessSync(nodeBinary, fs.constants.R_OK);
+    } catch (err) {
+      return {
+        ok: false,
+        reason: "Bundled Node.js runtime is missing",
+        detail:
+          `Could not find or read:\n  ${nodeBinary}\n\n` +
+          "This usually means antivirus software quarantined the file or the install is incomplete. " +
+          "Try whitelisting the install folder and reinstalling Paperclip.\n\n" +
+          `(${err instanceof Error ? err.message : String(err)})`,
+        nodeBinary,
+        serverEntry,
+        paperclipHome,
+      };
+    }
+  }
+
+  try {
+    fs.accessSync(serverEntry, fs.constants.R_OK);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "Server bundle is missing",
+      detail:
+        `Could not find or read:\n  ${serverEntry}\n\n` +
+        "The Paperclip server files appear to be missing from this install. Reinstall Paperclip to repair.\n\n" +
+        `(${err instanceof Error ? err.message : String(err)})`,
+      nodeBinary,
+      serverEntry,
+      paperclipHome,
+    };
+  }
+
+  try {
+    fs.mkdirSync(paperclipHome, { recursive: true });
+    const probe = path.join(paperclipHome, ".paperclip-write-probe");
+    fs.writeFileSync(probe, String(Date.now()));
+    fs.unlinkSync(probe);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "Local data directory is not writable",
+      detail:
+        `Could not create or write to:\n  ${paperclipHome}\n\n` +
+        "Paperclip needs to write its database and settings here. Check folder permissions, OneDrive sync conflicts, " +
+        "or pick a different location.\n\n" +
+        `(${err instanceof Error ? err.message : String(err)})`,
+      nodeBinary,
+      serverEntry,
+      paperclipHome,
+    };
+  }
+
+  return { ok: true, nodeBinary, serverEntry, paperclipHome };
 }
 
 function resolveShellPath(): string {
@@ -324,40 +417,36 @@ function resolvePaperclipHome(): string {
   return app.getPath("userData");
 }
 
-function startServer(port: number): ChildProcess {
+function startServer(port: number, validation: ServerEnvironmentValidation): ChildProcess {
   const root = getAppRoot();
   const isWindows = process.platform === "win32";
   const enrichedPath = resolveShellPath();
-  const paperclipHome = resolvePaperclipHome();
-  console.log(`Using PAPERCLIP_HOME: ${paperclipHome}`);
+  console.log(`[startServer] node=${validation.nodeBinary}`);
+  console.log(`[startServer] entry=${validation.serverEntry}`);
+  console.log(`[startServer] PAPERCLIP_HOME=${validation.paperclipHome}`);
+  console.log(`[startServer] PORT=${port}`);
 
-  const child = app.isPackaged
-    ? spawn(findNodeBinary(), [path.join(root, "server", "dist", "index.js")], {
-        cwd: root,
-        env: {
-          ...process.env,
-          PATH: enrichedPath,
-          NODE_ENV: "production",
-          PORT: String(port),
-          PAPERCLIP_HOME: paperclipHome,
-          PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: !isWindows,
-      })
-    : spawn("node", [path.join(root, "node_modules", "@paperclipai", "server", "dist", "index.js")], {
-        cwd: root,
-        env: {
-          ...process.env,
-          PATH: enrichedPath,
-          NODE_ENV: "development",
-          PORT: String(port),
-          PAPERCLIP_HOME: paperclipHome,
-          PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: !isWindows,
-      });
+  const child = spawn(
+    validation.nodeBinary,
+    [validation.serverEntry],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: enrichedPath,
+        NODE_ENV: app.isPackaged ? "production" : "development",
+        PORT: String(port),
+        PAPERCLIP_HOME: validation.paperclipHome,
+        PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      // Detached on POSIX so SIGTERM can take down the process group, but
+      // never on Windows — there are no process groups and detached child
+      // processes can survive parent crashes and orphan postgres.
+      detached: !isWindows,
+      windowsHide: true,
+    },
+  );
 
   if (child.pid) {
     writePidFile(child.pid);
@@ -366,6 +455,115 @@ function startServer(port: number): ChildProcess {
   child.stdout?.on("data", (chunk: Buffer) => process.stdout.write(chunk));
   child.stderr?.on("data", (chunk: Buffer) => process.stderr.write(chunk));
   return child;
+}
+
+interface InnerServerLogTailer {
+  stop: () => void;
+  getTail: () => string;
+}
+
+/**
+ * Tail the bundled server's pino-formatted log file and emit each new
+ * line via onLine. The bundled server writes most of its useful boot
+ * progress and errors to this file rather than to stdout, so this is
+ * the only reliable way for us to see what's happening.
+ */
+function tailInnerServerLog(
+  paperclipHome: string,
+  onLine: (line: string) => void,
+): InnerServerLogTailer {
+  const logPath = path.join(paperclipHome, INNER_SERVER_LOG_RELPATH);
+  let position = 0;
+  let stopped = false;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let buffered = "";
+  const recent: string[] = [];
+
+  // Start at the current end-of-file so we don't replay history from
+  // previous runs. Any text the server emits after we attach is fresh.
+  try {
+    if (fs.existsSync(logPath)) {
+      position = fs.statSync(logPath).size;
+    }
+  } catch {
+    position = 0;
+  }
+
+  const tick = () => {
+    if (stopped) return;
+    let stat;
+    try {
+      stat = fs.statSync(logPath);
+    } catch {
+      return;
+    }
+
+    if (stat.size < position) {
+      // Truncated or rotated.
+      position = 0;
+    }
+    if (stat.size === position) {
+      return;
+    }
+
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(logPath, "r");
+      const length = stat.size - position;
+      const buf = Buffer.alloc(length);
+      fs.readSync(fd, buf, 0, length, position);
+      position = stat.size;
+      buffered += buf.toString("utf8");
+
+      let newlineIndex: number;
+      while ((newlineIndex = buffered.indexOf("\n")) !== -1) {
+        const line = buffered.slice(0, newlineIndex).replace(/\r$/, "");
+        buffered = buffered.slice(newlineIndex + 1);
+        if (line.length === 0) continue;
+        recent.push(line);
+        if (recent.length > 80) recent.shift();
+        try {
+          onLine(line);
+        } catch {
+          // never let a listener crash the tail loop
+        }
+      }
+    } catch {
+      // ignore transient read errors; will retry next tick
+    } finally {
+      if (fd !== null) {
+        try { fs.closeSync(fd); } catch { /* ignore */ }
+      }
+    }
+  };
+
+  pollTimer = setInterval(tick, INNER_SERVER_LOG_TAIL_INTERVAL_MS);
+
+  return {
+    stop: () => {
+      stopped = true;
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+    },
+    getTail: () => {
+      // Always include any final buffered partial line + recent lines, plus
+      // the last INNER_SERVER_LOG_TAIL_BYTES of the file so a sudden death
+      // can include stack traces written right at exit.
+      let snapshot = recent.join("\n");
+      try {
+        const stat = fs.statSync(logPath);
+        const start = Math.max(0, stat.size - INNER_SERVER_LOG_TAIL_BYTES);
+        const fd = fs.openSync(logPath, "r");
+        const buf = Buffer.alloc(stat.size - start);
+        fs.readSync(fd, buf, 0, buf.length, start);
+        fs.closeSync(fd);
+        snapshot = buf.toString("utf8");
+      } catch {
+        // fall back to whatever we tracked in memory
+      }
+      return snapshot;
+    },
+  };
 }
 
 function killServer(): Promise<void> {
@@ -919,9 +1117,22 @@ async function bootLocal(options: {
   const previousConnectionMode = currentConnection?.mode ?? null;
   const previousServerProcess = previousConnectionMode === "local_embedded" ? serverProcess : null;
   let nextServerProcess: ChildProcess | null = null;
+  let innerLogTailer: InnerServerLogTailer | null = null;
   await ensureLauncherWindow("local-boot");
 
   try {
+    sendBootStatus("init", "Validating install...", 3);
+
+    const validation = validateServerEnvironment();
+    if (!validation.ok) {
+      sendConnectionError(
+        validation.reason ?? "Could not start the embedded server",
+        validation.detail ?? "The local server environment is invalid.",
+      );
+      sendLauncherNavigation("error");
+      return;
+    }
+
     sendBootStatus("init", "Preparing environment...", 5);
 
     serverPort = await findFreePort(PREFERRED_PORT);
@@ -930,16 +1141,44 @@ async function bootLocal(options: {
     }
 
     sendBootStatus("database", "Launching embedded PostgreSQL...", 15);
-    nextServerProcess = startServer(serverPort);
+
+    let spawnError: Error | null = null;
+    try {
+      nextServerProcess = startServer(serverPort, validation);
+    } catch (err) {
+      spawnError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    if (!nextServerProcess || spawnError) {
+      sendConnectionError(
+        "Could not launch the embedded server process",
+        [
+          `Failed to spawn:`,
+          `  ${validation.nodeBinary}`,
+          `  ${validation.serverEntry}`,
+          "",
+          spawnError ? spawnError.message : "Unknown spawn error.",
+          "",
+          "If antivirus is installed, whitelist the Paperclip install folder and try again.",
+        ].join("\n"),
+      );
+      sendLauncherNavigation("error");
+      return;
+    }
+
     trackServerProcess(nextServerProcess);
 
     const logFile = path.join(app.getPath("userData"), "server.log");
     const logStream = fs.createWriteStream(logFile, { flags: "a" });
     logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
+    logStream.write(`node:   ${validation.nodeBinary}\n`);
+    logStream.write(`entry:  ${validation.serverEntry}\n`);
+    logStream.write(`home:   ${validation.paperclipHome}\n`);
 
     let dbReady = false;
     let serverListening = false;
     let lastProgress = 15;
+    let crashed = false;
     const serverOutputLines: string[] = [];
 
     const updateProgress = (step: BootStep, detail: string, progress: number) => {
@@ -950,41 +1189,67 @@ async function bootLocal(options: {
       sendBootStatus(step, detail, progress);
     };
 
-    const onServerData = (chunk: Buffer) => {
-      const text = chunk.toString();
-      serverOutputLines.push(...text.split("\n").filter(Boolean));
+    const ingestLine = (line: string) => {
+      serverOutputLines.push(line);
       if (serverOutputLines.length > 200) {
         serverOutputLines.splice(0, serverOutputLines.length - 200);
       }
-      logStream.write(text);
 
-      if (!dbReady && (text.includes("PostgreSQL ready") || text.includes("migration"))) {
+      if (!dbReady && (
+        line.includes("Embedded PostgreSQL ready") ||
+        line.includes("PostgreSQL ready") ||
+        line.includes("Created embedded PostgreSQL")
+      )) {
         dbReady = true;
         updateProgress("database", "Running migrations...", 35);
       }
 
-      if (!serverListening && text.includes("Server listening on")) {
+      if (!dbReady && line.includes("Applying") && line.includes("migrations")) {
+        updateProgress("database", "Applying migrations...", 30);
+      }
+
+      if (!serverListening && line.includes("Server listening on")) {
         serverListening = true;
-        updateProgress("server", "Server is starting...", 55);
+        updateProgress("server", "Server is starting...", 65);
       }
     };
 
-    nextServerProcess.stdout?.on("data", onServerData);
-    nextServerProcess.stderr?.on("data", onServerData);
+    const onServerStdio = (chunk: Buffer) => {
+      const text = chunk.toString();
+      logStream.write(text);
+      for (const line of text.split("\n").map((l) => l.replace(/\r$/, ""))) {
+        if (line.length > 0) ingestLine(line);
+      }
+    };
+
+    nextServerProcess.stdout?.on("data", onServerStdio);
+    nextServerProcess.stderr?.on("data", onServerStdio);
+
+    // The bundled server logs almost everything to its own pino file;
+    // tail it so we get real progress + error details from the boot path.
+    innerLogTailer = tailInnerServerLog(validation.paperclipHome, ingestLine);
+
+    nextServerProcess.on("error", (err) => {
+      logStream.write(`\n[main] spawn error: ${err.message}\n`);
+      console.error("Server spawn error:", err);
+    });
 
     nextServerProcess.on("exit", (code, signal) => {
       logStream.end();
+      crashed = true;
       if (!shouldHandleTrackedServerExit(serverProcess, nextServerProcess)) {
         return;
       }
 
       trackServerProcess(null);
       stopLocalServerMonitor();
-      const tail = serverOutputLines.slice(-30).join("\n");
+      const innerTail = innerLogTailer?.getTail() ?? "";
+      const stdioTail = serverOutputLines.slice(-30).join("\n");
+      const tail = innerTail || stdioTail;
       console.error(`Server exited unexpectedly (code=${code}, signal=${signal})\n${tail}`);
       void promptToRecoverLocalServer({
         message: "The embedded Paperclip server stopped unexpectedly.",
-        detail: `Exit code: ${code}, signal: ${signal}\n\nLog: ${logFile}\n\n${tail}`,
+        detail: `Exit code: ${code}, signal: ${signal}\n\nLog: ${logFile}\n\nLast output:\n${tail.slice(-2000)}`,
       });
     });
 
@@ -997,12 +1262,44 @@ async function bootLocal(options: {
       if (!dbReady) {
         updateProgress("database", "Launching embedded PostgreSQL...", 20);
       } else if (!serverListening) {
-        updateProgress("server", "Waiting for server...", 50);
+        updateProgress("server", "Waiting for server...", 60);
       }
     }, 2_000);
 
     updateProgress("server", "Waiting for server...", 45);
-    await waitForPort(serverPort, SERVER_STARTUP_TIMEOUT_MS);
+    try {
+      await waitForPort(serverPort, SERVER_STARTUP_TIMEOUT_MS);
+    } catch (waitErr) {
+      clearInterval(progressInterval);
+      const innerTail = innerLogTailer?.getTail() ?? "";
+      const stdioTail = serverOutputLines.slice(-30).join("\n");
+      const detail = [
+        crashed
+          ? "The server process exited before opening its port."
+          : `The server did not open its port within ${Math.round(SERVER_STARTUP_TIMEOUT_MS / 1000)}s.`,
+        "",
+        `Log file: ${logFile}`,
+        "",
+        "Recent server output:",
+        (innerTail || stdioTail || "(no output captured)").slice(-2000),
+      ].join("\n");
+
+      sendConnectionError(
+        crashed ? "Server crashed during startup" : "Server failed to start in time",
+        detail,
+      );
+      sendLauncherNavigation("error");
+
+      if (shouldStopAttemptedServer(nextServerProcess, serverProcess)) {
+        await killChildProcess(nextServerProcess);
+        if (shouldRestorePreviousTrackedServer(previousServerProcess, nextServerProcess, serverProcess)) {
+          trackServerProcess(previousServerProcess);
+        } else {
+          trackServerProcess(null);
+        }
+      }
+      throw waitErr;
+    }
     clearInterval(progressInterval);
 
     if (bootId !== bootSequence) {
@@ -1077,11 +1374,18 @@ async function bootLocal(options: {
         trackServerProcess(null);
       }
     }
-    sendConnectionError(
-      "Failed to start local Paperclip",
-      error instanceof Error ? error.message : String(error),
-    );
-    sendLauncherNavigation("error");
+    // The waitForPort failure path already sent its own structured error
+    // dialog; only show the generic one if no error has been surfaced yet.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith("Server did not start within")) {
+      sendConnectionError(
+        "Failed to start local Paperclip",
+        message,
+      );
+      sendLauncherNavigation("error");
+    }
+  } finally {
+    innerLogTailer?.stop();
   }
 }
 
