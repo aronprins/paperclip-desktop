@@ -38,5 +38,12 @@
     "electron": "^41.0.4",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@embedded-postgres/windows-x64",
+      "electron",
+      "sharp"
+    ]
   }
 }

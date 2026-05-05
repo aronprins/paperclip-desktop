@@ -7,6 +7,7 @@ build/server-bundle/
 build/server-staging/
 build/node-bin/
 build/upstream-clone/
+build/ui-staging/
 docs/development/paperclip/
 docs/mockups/chooser-variations.html
 

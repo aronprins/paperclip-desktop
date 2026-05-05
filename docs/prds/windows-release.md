@@ -180,9 +180,18 @@ The Windows release is ready only when all of the following are true:
 - update README and release messaging
 - publish first supported Windows release
 
+## Resolved Decisions
+
+These were Open Questions when this PRD was written. They are now resolved by what `electron-builder.yml` and `src/main.ts` actually ship today.
+
+- **Portable artifact**: shipped alongside NSIS as `Paperclip-Desktop-Portable-${version}.exe`. Auto-update is wired only on the NSIS channel via `electron-updater`; the portable artifact is intentionally update-free and is treated as a "run-from-anywhere" fallback rather than a supported daily-use distribution.
+- **Install scope**: per-user. `electron-builder.yml` sets `nsis.perMachine: false`, so installation lands under `%LOCALAPPDATA%\Programs\paperclip-desktop` and never prompts for UAC. Per-machine install is explicitly out of scope for v1.
+- **Native runtime**: bundled `node.exe` only. `findNodeBinary()` looks for the bundled binary first and falls back to `node.exe` on PATH; no Windows-specific CLI discovery is performed and `resolveShellPath()` short-circuits to the existing `process.env.PATH` on `win32`.
+- **CLI home reuse**: yes, opt-in by directory presence. `resolvePaperclipHome()` reuses `%USERPROFILE%\.paperclip` if `instances/default/db` already exists there (so existing Paperclip CLI users keep their data), otherwise it isolates desktop data under `%APPDATA%\Paperclip` (`app.getPath("userData")`).
+- **Repair, logs, and uninstall affordances**: surfaced in the Help menu — `Open Application Logs`, `Reset Local Data (Repair)…`, and (Windows-only) `Uninstall Paperclip…`. The NSIS uninstaller adds an opt-in "also delete user data" prompt that defaults to No and is suppressed during silent updater self-replace via `${isUpdated}`.
+
 ## Open Questions
 
-- Should the portable artifact be published publicly in v1, or should Windows support be NSIS-only?
-- Should the first supported Windows release be user-level install only, or should per-machine install be supported?
-- Do we want Windows-specific CLI discovery in v1, or is bundled-server-only support sufficient for launch?
-- Should we support reuse of an existing Paperclip CLI home on Windows in the first release, or keep desktop data isolated?
+- Should v1 use Azure Artifact Signing or fall back to OV `.pfx` signing while identity validation completes? Both paths are documented in `docs/development/windows-signing-guide.md`; the actual choice depends on operator preference and certificate availability.
+- Should the bundled `node.exe` and the `@embedded-postgres/windows-x64` native binaries be re-signed with the Paperclip publisher certificate, or is upstream Microsoft / npm signing sufficient for SmartScreen reputation?
+- MSI / AppX / Microsoft Store distribution remains explicitly out of scope for v1, but should be revisited once SmartScreen reputation is established on the NSIS channel.
