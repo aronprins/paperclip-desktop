@@ -1,6 +1,6 @@
 {
   "name": "paperclip-desktop",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "private": true,
   "description": "Paperclip desktop application — Electron wrapper for the Paperclip server",
   "author": {
