@@ -35,8 +35,20 @@
   },
   "devDependencies": {
     "@paperclipai/server": "2026.428.0",
-    "electron": "^41.0.4",
-    "electron-builder": "^25.1.8",
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@xmldom/xmldom": "0.8.13",
+      "brace-expansion@1.1.12": "1.1.13",
+      "brace-expansion@2.0.2": "2.0.3",
+      "defu": "6.1.7",
+      "dompurify": "3.4.2",
+      "fast-xml-parser": "5.7.3",
+      "lodash": "4.18.1",
+      "path-to-regexp": "8.4.2"
+    }
   }
 }
