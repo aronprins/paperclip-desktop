@@ -24,6 +24,16 @@ interface HealthPayload {
   bootstrapInviteActive?: unknown;
 }
 
+interface ParsedHealthPayload {
+  status: string;
+  version: string | null;
+  deploymentMode: DeploymentMode;
+  deploymentExposure: DeploymentExposure | null;
+  authReady: boolean | null;
+  bootstrapStatus: BootstrapStatus | null;
+  bootstrapInviteActive: boolean | null;
+}
+
 export async function preflightRemoteConnection(options: PreflightOptions): Promise<RemotePreflightResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 8_000;
@@ -42,7 +52,7 @@ export async function preflightRemoteConnection(options: PreflightOptions): Prom
 
   try {
     const healthResponse = await fetchJson(fetchImpl, new URL("/api/health", normalized.origin), timeoutMs);
-    const health = parseHealthPayload(healthResponse.body);
+    const health = healthResponse.status === 200 ? parseHealthPayload(healthResponse.body) : null;
 
     if (!health) {
       return buildFailure({
@@ -117,7 +127,7 @@ export async function preflightRemoteConnection(options: PreflightOptions): Prom
       };
     }
 
-    if (health.authReady !== true) {
+    if (health.authReady === false) {
       return {
         ok: false,
         normalizedUrl: normalized.normalizedUrl,
@@ -210,22 +220,24 @@ async function fetchSession(
   timeoutMs: number,
 ): Promise<{ sessionState: SessionState }> {
   const response = await fetchWithTimeout(fetchImpl, url, timeoutMs);
-
-  if (response.status === 401) {
-    return { sessionState: "signed_out" };
-  }
-
-  if (response.status !== 200) {
-    return { sessionState: "unknown" };
-  }
-
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     return { sessionState: "unknown" };
   }
 
   const body = await response.json();
-  if (isObject(body) && isObject(body.session) && typeof body.session.userId === "string") {
+
+  if (response.status === 401) {
+    return isPaperclipAuthRequiredPayload(body)
+      ? { sessionState: "signed_out" }
+      : { sessionState: "unknown" };
+  }
+
+  if (response.status !== 200) {
+    return { sessionState: "unknown" };
+  }
+
+  if (isPaperclipSessionPayload(body)) {
     return { sessionState: "signed_in" };
   }
 
@@ -248,15 +260,7 @@ async function fetchWithTimeout(fetchImpl: typeof fetch, url: URL, timeoutMs: nu
   }
 }
 
-function parseHealthPayload(body: unknown): {
-  status: string | null;
-  version: string | null;
-  deploymentMode: DeploymentMode | null;
-  deploymentExposure: DeploymentExposure | null;
-  authReady: boolean | null;
-  bootstrapStatus: BootstrapStatus | null;
-  bootstrapInviteActive: boolean | null;
-} | null {
+function parseHealthPayload(body: unknown): ParsedHealthPayload | null {
   if (!isObject(body)) {
     return null;
   }
@@ -278,8 +282,16 @@ function parseHealthPayload(body: unknown): {
     typeof body.bootstrapInviteActive === "boolean" ? body.bootstrapInviteActive : null;
   const status = typeof body.status === "string" ? body.status : null;
   const version = typeof body.version === "string" ? body.version : null;
+  const hasFullHealthShape = deploymentExposure !== null && authReady !== null;
+  const hasRedactedAuthenticatedShape =
+    status === "ok" &&
+    deploymentMode === "authenticated" &&
+    bootstrapStatus !== null &&
+    bootstrapInviteActive !== null &&
+    deploymentExposure === null &&
+    authReady === null;
 
-  if (!status || !deploymentMode || !deploymentExposure || authReady === null) {
+  if (!status || !deploymentMode || (!hasFullHealthShape && !hasRedactedAuthenticatedShape)) {
     return null;
   }
 
@@ -292,6 +304,23 @@ function parseHealthPayload(body: unknown): {
     bootstrapStatus,
     bootstrapInviteActive,
   };
+}
+
+function isPaperclipAuthRequiredPayload(body: unknown): boolean {
+  return isObject(body) && body.error === "Board authentication required";
+}
+
+function isPaperclipSessionPayload(body: unknown): boolean {
+  if (!isObject(body) || !isObject(body.session)) {
+    return false;
+  }
+
+  return (
+    typeof body.session.id === "string" &&
+    body.session.id.startsWith("paperclip:") &&
+    typeof body.session.userId === "string" &&
+    body.session.userId.length > 0
+  );
 }
 
 function buildFailure(input: {

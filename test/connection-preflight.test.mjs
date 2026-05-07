@@ -55,10 +55,7 @@ test("preflight treats 401 session probe as sign-in required", async () => {
       },
       200,
     ),
-    new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    }),
+    authRequiredResponse(),
   ];
 
   const result = await preflightRemoteConnection({
@@ -70,6 +67,133 @@ test("preflight treats 401 session probe as sign-in required", async () => {
   assert.equal(result.insecureTransport, false);
   assert.equal(result.sessionState, "signed_out");
   assert.equal(result.bootstrapStatus, "bootstrap_pending");
+});
+
+test("preflight accepts redacted authenticated health with Paperclip auth-required session response", async () => {
+  const responses = [
+    jsonResponse(
+      {
+        status: "ok",
+        deploymentMode: "authenticated",
+        bootstrapStatus: "ready",
+        bootstrapInviteActive: false,
+      },
+      200,
+    ),
+    authRequiredResponse(),
+  ];
+
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.sessionState, "signed_out");
+  assert.equal(result.deploymentMode, "authenticated");
+  assert.equal(result.deploymentExposure, null);
+  assert.equal(result.authReady, null);
+  assert.equal(result.bootstrapStatus, "ready");
+  assert.equal(result.bootstrapInviteActive, false);
+});
+
+test("preflight accepts redacted authenticated health with active Paperclip session", async () => {
+  const responses = [
+    jsonResponse(
+      {
+        status: "ok",
+        deploymentMode: "authenticated",
+        bootstrapStatus: "bootstrap_pending",
+        bootstrapInviteActive: true,
+      },
+      200,
+    ),
+    jsonResponse(
+      {
+        session: { id: "paperclip:session:user-1", userId: "user-1" },
+        user: { id: "user-1" },
+      },
+      200,
+    ),
+  ];
+
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net/some/path?ignored=true#hash",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.normalizedUrl, "https://paperclip-host.tailnet.ts.net/");
+  assert.equal(result.sessionState, "signed_in");
+  assert.equal(result.bootstrapStatus, "bootstrap_pending");
+  assert.equal(result.bootstrapInviteActive, true);
+});
+
+test("preflight rejects redacted health with generic 401 session response", async () => {
+  const responses = [
+    jsonResponse(
+      {
+        status: "ok",
+        deploymentMode: "authenticated",
+        bootstrapStatus: "ready",
+        bootstrapInviteActive: false,
+      },
+      200,
+    ),
+    jsonResponse({ error: "Unauthorized" }, 401),
+  ];
+
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://example.com",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "not_paperclip");
+  assert.equal(result.paperclipDetected, true);
+  assert.equal(result.sessionState, "unknown");
+});
+
+test("preflight rejects redacted health without bootstrap invite state", async () => {
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net",
+    fetchImpl: async () =>
+      jsonResponse(
+        {
+          status: "ok",
+          deploymentMode: "authenticated",
+          bootstrapStatus: "ready",
+        },
+        200,
+      ),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "not_paperclip");
+  assert.equal(result.paperclipDetected, false);
+});
+
+test("preflight treats explicit authReady false as auth not ready", async () => {
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net",
+    fetchImpl: async () =>
+      jsonResponse(
+        {
+          status: "ok",
+          version: "2026.403.0",
+          deploymentMode: "authenticated",
+          deploymentExposure: "private",
+          authReady: false,
+          bootstrapStatus: "ready",
+          bootstrapInviteActive: false,
+        },
+        200,
+      ),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "auth_not_ready");
+  assert.equal(result.paperclipDetected, true);
 });
 
 test("preflight blocks local_trusted remotes", async () => {
@@ -125,10 +249,7 @@ test("preflight allows http remotes and carries the insecurity warning", async (
       },
       200,
     ),
-    new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    }),
+    authRequiredResponse(),
   ];
 
   const result = await preflightRemoteConnection({
@@ -154,6 +275,61 @@ test("preflight rejects non-Paperclip endpoints", async () => {
   assert.equal(result.reason, "not_paperclip");
 });
 
+test("preflight rejects health responses that are not HTTP 200", async () => {
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net",
+    fetchImpl: async () =>
+      jsonResponse(
+        {
+          status: "ok",
+          deploymentMode: "authenticated",
+          bootstrapStatus: "ready",
+          bootstrapInviteActive: false,
+        },
+        503,
+      ),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "not_paperclip");
+});
+
+test("preflight uses fixed same-origin probe paths and manual redirects", async () => {
+  const calls = [];
+  const responses = [
+    jsonResponse(
+      {
+        status: "ok",
+        deploymentMode: "authenticated",
+        bootstrapStatus: "ready",
+        bootstrapInviteActive: false,
+      },
+      200,
+    ),
+    authRequiredResponse(),
+  ];
+
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.tailnet.ts.net/user/input?next=https://evil.test#fragment",
+    fetchImpl: async (input, init) => {
+      calls.push({ url: input.toString(), redirect: init?.redirect });
+      return responses.shift();
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    {
+      url: "https://paperclip-host.tailnet.ts.net/api/health",
+      redirect: "manual",
+    },
+    {
+      url: "https://paperclip-host.tailnet.ts.net/api/auth/get-session",
+      redirect: "manual",
+    },
+  ]);
+});
+
 test("preflight classifies TLS failures", async () => {
   const result = await preflightRemoteConnection({
     remoteUrl: "https://badcert.example.com",
@@ -172,4 +348,8 @@ function jsonResponse(body, status) {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function authRequiredResponse() {
+  return jsonResponse({ error: "Board authentication required" }, 401);
 }
