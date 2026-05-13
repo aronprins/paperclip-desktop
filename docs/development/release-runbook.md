@@ -535,6 +535,8 @@ For the common case, use this order:
 - Do not notarize both the app and the DMG in separate passes.
 - Do not rebuild a different app for notarization replacement.
 - Do not staple a rebuilt app that is not the one Apple accepted.
+- Do not publish macOS assets until `scripts/verify-macos-release.mjs` passes for each architecture; it verifies that packaged native Mach-O payloads match the bundled Node architecture, which catches cases like an arm64 app shipping an x64 `.node` binding.
+- Do not publish macOS assets unless the verifier confirms `Contents/Resources/app-server/server/ui-dist/index.html` is present; missing UI assets make the server boot in API-only mode and Electron shows a 404 error page.
 - Do not publish `latest-mac.yml` until the stapled outputs have passed local verification.
 - Do not publish a stable GitHub release before the final notarized assets are uploaded.
 - Do not use a public release plus `latest-mac.yml` as a staging mechanism.

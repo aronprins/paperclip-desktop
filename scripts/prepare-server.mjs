@@ -136,6 +136,24 @@ function validateMigrations(bundleServerDir) {
   }
 }
 
+function normalizeEsbuildBinary(bundleServerDir, arch) {
+  const packageArch = arch === "x64" ? "x64" : "arm64";
+  const esbuildBin = path.join(bundleServerDir, "node_modules", "esbuild", "bin", "esbuild");
+  const archEsbuildBin = path.join(
+    bundleServerDir,
+    "node_modules",
+    "@esbuild",
+    `darwin-${packageArch}`,
+    "bin",
+    "esbuild",
+  );
+
+  if (!existsSync(esbuildBin) || !existsSync(archEsbuildBin)) return;
+
+  cpSync(archEsbuildBin, esbuildBin);
+  console.log(`[prepare-server] Normalized esbuild binary for darwin-${packageArch}.`);
+}
+
 for (const arch of targetArches) {
   const variant = `${ebPlatform}-${arch}`;
   const stagingDir = path.join(stagingRootDir, variant);
@@ -163,8 +181,17 @@ for (const arch of targetArches) {
   );
 
   execSync(
-    `npm install --production --os=${nodePlatform} --cpu=${arch}`,
-    { cwd: stagingDir, stdio: "inherit" },
+    `npm install --production --os=${nodePlatform} --cpu=${arch} --arch=${arch}`,
+    {
+      cwd: stagingDir,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        npm_config_arch: arch,
+        npm_config_platform: nodePlatform,
+        npm_config_target_arch: arch,
+      },
+    },
   );
 
   console.log(`[prepare-server] Assembling server bundle for ${variant}...`);
@@ -192,6 +219,7 @@ for (const arch of targetArches) {
         fixDylibSymlinks(libDir);
       }
     }
+    normalizeEsbuildBinary(bundleServerDir, arch);
   }
 
   console.log(`[prepare-server] Scanning ${variant} bundle for Finder duplicate files...`);
