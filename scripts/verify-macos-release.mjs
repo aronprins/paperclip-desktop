@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -7,6 +7,16 @@ const outputDir = resolve(process.argv[2] || "release/local-macos");
 const requireStapled = process.argv.includes("--require-stapled");
 const expectedIdentity = process.env.APPLE_CODESIGN_IDENTITY?.trim() || null;
 const expectedTeamId = process.env.APPLE_TEAM_ID?.trim() || null;
+const MACH_O_MAGICS = new Set([
+  "feedface",
+  "cefaedfe",
+  "feedfacf",
+  "cffaedfe",
+  "cafebabe",
+  "bebafeca",
+  "cafebabf",
+  "bfbafeca",
+]);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -90,6 +100,28 @@ function tryRun(command, args, options = {}) {
   };
 }
 
+function isMachOBinary(target) {
+  let fd;
+
+  try {
+    fd = openSync(target, "r");
+    const header = Buffer.alloc(4);
+    const bytesRead = readSync(fd, header, 0, header.length, 0);
+    if (bytesRead < header.length) return false;
+    return MACH_O_MAGICS.has(header.toString("hex"));
+  } catch {
+    return false;
+  } finally {
+    if (typeof fd === "number") {
+      try {
+        closeSync(fd);
+      } catch {
+        // Best effort cleanup.
+      }
+    }
+  }
+}
+
 function verifyCodesign(target, deep = false) {
   const args = ["--verify", "--strict", "--verbose=2"];
   if (deep) {
@@ -131,10 +163,16 @@ function collectChecks(appPath) {
   const helperExecutables = allEntries.filter((entry) => /\/Contents\/Frameworks\/.+\.app\/Contents\/MacOS\/.+$/.test(entry));
   const nodeBinary = allEntries.find((entry) => entry.endsWith("/Contents/Resources/app-server/node-bin/node")) || null;
   const postgresBinaries = allEntries.filter((entry) => /@embedded-postgres\/darwin-[^/]+\/native\/bin\/[^/]+$/.test(entry));
-  const nativeNodeModules = allEntries.filter((entry) => entry.endsWith(".node"));
-  const nativeBareModules = allEntries.filter((entry) => entry.endsWith(".bare"));
-  const nativeDylibs = allEntries.filter((entry) => entry.endsWith(".dylib"));
+  const nativeNodeModules = allEntries.filter((entry) => entry.endsWith(".node") && isMachOBinary(entry));
+  const nativeBareModules = allEntries.filter((entry) => entry.endsWith(".bare") && isMachOBinary(entry));
+  const nativeDylibs = allEntries.filter((entry) => entry.endsWith(".dylib") && isMachOBinary(entry));
   const mainExecutables = allEntries.filter((entry) => /\/Contents\/MacOS\/[^/]+$/.test(entry) && !entry.includes("/Contents/Frameworks/"));
+  const appServerMachOBinaries = allEntries.filter((entry) => {
+    if (!entry.includes("/Contents/Resources/app-server/")) return false;
+    if (entry.endsWith(".node") || entry.endsWith(".bare") || entry.endsWith(".dylib")) return false;
+    if (entry === nodeBinary || postgresBinaries.includes(entry)) return false;
+    return isMachOBinary(entry);
+  });
 
   const namedChecks = [
     ["appBundle", [appPath]],
@@ -145,6 +183,7 @@ function collectChecks(appPath) {
     ["nativeNodeModule", nativeNodeModules],
     ["nativeBareModule", nativeBareModules],
     ["nativeDylib", nativeDylibs],
+    ["appServerMachOBinary", appServerMachOBinaries],
   ];
 
   const checks = {};
