@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -99,6 +99,33 @@ function verifyCodesign(target, deep = false) {
   run("codesign", args);
 }
 
+function dependencyPath(nodeModulesDir, dependencyName) {
+  return join(nodeModulesDir, ...dependencyName.split("/"), "package.json");
+}
+
+function verifyServerRuntimeDependencies(appPath) {
+  const serverDir = join(appPath, "Contents", "Resources", "app-server", "server");
+  const packagePath = join(serverDir, "package.json");
+  if (!existsSync(packagePath)) return null;
+
+  const nodeModulesDir = join(serverDir, "node_modules");
+  if (!existsSync(nodeModulesDir)) {
+    throw new Error(`Packaged server is missing node_modules: ${nodeModulesDir}`);
+  }
+
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+  const dependencies = Object.keys(packageJson.dependencies ?? {}).sort();
+  const missing = dependencies.filter((dependency) => !existsSync(dependencyPath(nodeModulesDir, dependency)));
+  if (missing.length > 0) {
+    throw new Error(`Packaged server is missing runtime dependencies: ${missing.join(", ")}`);
+  }
+
+  return {
+    path: relative(serverDir),
+    dependencyCount: dependencies.length,
+  };
+}
+
 function collectChecks(appPath) {
   const allEntries = walk(appPath);
   const helperExecutables = allEntries.filter((entry) => /\/Contents\/Frameworks\/.+\.app\/Contents\/MacOS\/.+$/.test(entry));
@@ -130,6 +157,11 @@ function collectChecks(appPath) {
         ...codesignMetadata(target),
       };
     });
+  }
+
+  const serverRuntime = verifyServerRuntimeDependencies(appPath);
+  if (serverRuntime) {
+    checks.serverRuntime = [serverRuntime];
   }
 
   return checks;

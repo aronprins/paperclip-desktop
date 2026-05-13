@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import {
   closeSync,
+  cpSync,
   existsSync,
   lstatSync,
   openSync,
@@ -9,7 +10,7 @@ import {
   readlinkSync,
   rmSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const MACH_O_MAGICS = new Set([
   "feedface",
@@ -65,6 +66,60 @@ function stripBundleMetadata(appPath) {
 
   execFileSync("sh", ["-c", `find "${appPath}" -name "._*" -delete 2>/dev/null; find "${appPath}" -name ".DS_Store" -delete 2>/dev/null; true`]);
   execFileSync("sh", ["-c", `find "${appPath}" ! -type l -print0 | xargs -0 -n 200 xattr -c 2>/dev/null; true`]);
+}
+
+function dereferenceSymlinks(dir) {
+  if (!existsSync(dir)) return;
+
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    let stat;
+
+    try {
+      stat = lstatSync(full);
+    } catch {
+      continue;
+    }
+
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(full);
+      const resolved = target.startsWith("/") ? target : join(dirname(full), target);
+      if (!existsSync(resolved)) {
+        rmSync(full, { force: true });
+        continue;
+      }
+
+      rmSync(full, { force: true });
+      cpSync(resolved, full, {
+        recursive: true,
+        dereference: true,
+        preserveTimestamps: true,
+      });
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      dereferenceSymlinks(full);
+    }
+  }
+}
+
+function copyServerNodeModules(context, appServerPath) {
+  const source = join(context.packager.projectDir, "app-server", "server", "node_modules");
+  const target = join(appServerPath, "server", "node_modules");
+
+  if (!existsSync(source)) {
+    throw new Error(`Missing staged server node_modules at ${source}`);
+  }
+
+  rmSync(target, { recursive: true, force: true });
+  cpSync(source, target, {
+    recursive: true,
+    dereference: true,
+    preserveTimestamps: true,
+  });
+  dereferenceSymlinks(target);
+  removeBrokenSymlinks(target);
 }
 
 function isMachOBinary(target) {
@@ -153,6 +208,8 @@ export default async function afterPack(context) {
   if (!existsSync(appServerPath)) {
     return;
   }
+
+  copyServerNodeModules(context, appServerPath);
 
   const signableBinaries = collectSignableBinaries(appServerPath).sort((left, right) => {
     const leftIsLibrary = left.path.endsWith(".dylib") || left.path.endsWith(".node");

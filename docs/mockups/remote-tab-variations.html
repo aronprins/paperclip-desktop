@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paperclip — Remote Tab Variations</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: #0a0a0a;
+    color: #e4e4e7;
+    padding: 40px 20px 80px;
+    min-height: 100vh;
+  }
+
+  .page-title {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .page-sub {
+    text-align: center;
+    font-size: 13px;
+    color: #71717a;
+    margin-bottom: 16px;
+  }
+  .legend {
+    text-align: center;
+    font-size: 11px;
+    color: #52525b;
+    margin-bottom: 48px;
+  }
+  .legend code {
+    background: #18181b;
+    color: #a1a1aa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 10px;
+  }
+
+  .variations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .variation {
+    background: #0f0f11;
+    border: 1px solid #1f1f22;
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .variation-header {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #1f1f22;
+  }
+  .variation-tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #a1a1aa;
+    background: #1f1f22;
+    border-radius: 999px;
+    padding: 3px 8px;
+    margin-bottom: 8px;
+  }
+  .variation-tag.reco { background: #052e16; color: #4ade80; }
+  .variation-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .variation-desc {
+    font-size: 12px;
+    color: #71717a;
+    line-height: 1.5;
+  }
+
+  /* State tabs (per-variation) */
+  .state-tabs {
+    display: flex;
+    gap: 4px;
+    background: #0d0d10;
+    border: 1px solid #1f1f22;
+    border-radius: 8px;
+    padding: 3px;
+    margin-bottom: 16px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .state-tab {
+    flex: 1;
+    padding: 6px 4px;
+    font-size: 10px;
+    font-weight: 500;
+    background: transparent;
+    color: #71717a;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .state-tab:hover { color: #d4d4d8; }
+  .state-tab.active { background: #27272a; color: #e4e4e7; }
+
+  .states { position: relative; width: 100%; display: flex; justify-content: center; }
+  .state-panel { display: none; width: 100%; justify-content: center; }
+  .state-panel.active { display: flex; }
+
+  /* Shared form primitives */
+  .section-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    color: #e4e4e7;
+  }
+  .remember-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #71717a;
+  }
+  .remember-row input[type="checkbox"] { accent-color: #a1a1aa; }
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid #27272a;
+    background: transparent;
+    color: #e4e4e7;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: #18181b; border-color: #52525b; }
+  .btn.primary { background: #e4e4e7; color: #0a0a0a; border-color: #e4e4e7; font-weight: 500; }
+  .btn.primary:hover { background: #d4d4d8; border-color: #d4d4d8; }
+  .btn.ghost { border-color: transparent; color: #a1a1aa; }
+  .btn.ghost:hover { background: #18181b; }
+  .btn:disabled, .btn.disabled { opacity: 0.35; pointer-events: none; }
+  .btn.sm { padding: 6px 12px; font-size: 12px; }
+
+  .field-label {
+    display: block;
+    font-size: 12px;
+    color: #71717a;
+    margin-bottom: 6px;
+  }
+  .field-input {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 6px;
+    border: 1px solid #27272a;
+    background: #18181b;
+    color: #e4e4e7;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field-input::placeholder { color: #3f3f46; }
+  .field-input:focus { border-color: #52525b; }
+  .field-input.error-border { border-color: #7f1d1d; }
+  .field-input.ok-border { border-color: #14532d; }
+
+  .frame {
+    width: 100%;
+    max-width: 400px;
+    background: #0a0a0a;
+    border: 1px solid #1f1f22;
+    border-radius: 10px;
+    padding: 22px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .frame-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .frame-back {
+    font-size: 12px;
+    color: #52525b;
+    cursor: pointer;
+  }
+  .frame-back:hover { color: #a1a1aa; }
+
+  /* Info icon + tooltip (shared) */
+  .info-ic {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #27272a;
+    color: #a1a1aa;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: help;
+    position: relative;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .info-ic:hover { background: #3f3f46; color: #e4e4e7; }
+  .info-ic .tt {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    padding: 8px 10px;
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    color: #d4d4d8;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: left;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 10;
+    white-space: normal;
+  }
+  .info-ic:hover .tt { opacity: 1; }
+
+  /* Status chip */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #1c1c1f;
+    color: #a1a1aa;
+    white-space: nowrap;
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip.ok { background: #052e16; color: #4ade80; }
+  .chip.warn { background: #2b2110; color: #fbbf24; }
+  .chip.err { background: #2a1215; color: #f87171; }
+  .chip.idle { background: #1c1c1f; color: #71717a; }
+  .chip.verifying { background: #0d1a2d; color: #60a5fa; }
+  .chip.verifying .dot { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .spinner {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #3f3f46;
+    border-top-color: #a1a1aa;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Compact HTTP warning (reused across variations) */
+  .mini-warn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid #3f3220;
+    background: #17130d;
+    border-radius: 8px;
+    font-size: 11px;
+    color: #d4d4d8;
+  }
+  .mini-warn label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  /* Error bar */
+  .mini-err {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #7f1d1d;
+    background: #1a0d0f;
+    border-radius: 8px;
+    font-size: 11px;
+    color: #fca5a5;
+    line-height: 1.4;
+  }
+
+  /* ============ V1: Inline Verify ============ */
+  .v1-url-wrap { position: relative; margin-bottom: 14px; }
+  .v1-url-wrap .field-input { padding-right: 96px; }
+  .v1-inline-btn {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: 1px solid #27272a;
+    background: #18181b;
+    color: #e4e4e7;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .v1-inline-btn:hover { background: #27272a; }
+  .v1-inline-btn:disabled { opacity: 0.5; pointer-events: none; }
+  .v1-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #a1a1aa;
+    min-height: 22px;
+  }
+  .v1-status-row .dim { color: #52525b; }
+  .v1-disclosure {
+    border: 1px solid #1f1f22;
+    border-radius: 8px;
+    background: #0d0d10;
+    margin-bottom: 14px;
+  }
+  .v1-disclosure summary {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #a1a1aa;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .v1-disclosure summary::-webkit-details-marker { display: none; }
+  .v1-disclosure summary::after { content: "▾"; color: #52525b; font-size: 10px; }
+  .v1-disclosure[open] summary::after { content: "▴"; }
+  .v1-disclosure-body {
+    padding: 0 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .v1-actions { display: flex; gap: 8px; }
+  .v1-actions .btn { flex: 1; }
+
+  /* ============ V2: Single Dense Card ============ */
+  .v2-card {
+    border: 1px solid #1f1f22;
+    border-radius: 10px;
+    background: #0d0d10;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .v2-card.ok { border-color: #14532d; }
+  .v2-card.err { border-color: #7f1d1d; }
+  .v2-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .v2-row:last-child { margin-bottom: 0; }
+  .v2-row .field-input { flex: 1; }
+  .v2-row .field-input.name { max-width: 140px; }
+  .v2-status-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px dashed #1f1f22;
+    margin-top: 8px;
+    font-size: 11px;
+    color: #71717a;
+    min-height: 20px;
+  }
+  .v2-status-strip .meta-group { display: flex; gap: 10px; flex-wrap: wrap; }
+  .v2-meta { display: inline-flex; align-items: center; gap: 4px; }
+  .v2-meta .k { color: #52525b; }
+  .v2-meta .v { color: #d4d4d8; }
+  .v2-meta .v.ok { color: #4ade80; }
+  .v2-meta .v.warn { color: #fbbf24; }
+  .v2-meta .v.err { color: #f87171; }
+  .v2-toggles {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .v2-actions { display: flex; gap: 8px; }
+  .v2-actions .btn { flex: 1; }
+
+  /* ============ V3: Stepper ============ */
+  .v3-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 18px;
+  }
+  .v3-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #52525b;
+  }
+  .v3-step .num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid #27272a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #52525b;
+  }
+  .v3-step.active { color: #e4e4e7; }
+  .v3-step.active .num { background: #e4e4e7; color: #0a0a0a; border-color: #e4e4e7; }
+  .v3-step.done { color: #4ade80; }
+  .v3-step.done .num { background: #052e16; color: #4ade80; border-color: #14532d; }
+  .v3-step.err { color: #f87171; }
+  .v3-step.err .num { background: #2a1215; color: #f87171; border-color: #7f1d1d; }
+  .v3-connector {
+    width: 28px;
+    height: 1px;
+    background: #27272a;
+    margin: 0 8px;
+  }
+  .v3-panel {
+    border: 1px solid #1f1f22;
+    border-radius: 10px;
+    background: #0d0d10;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .v3-panel.muted { opacity: 0.4; pointer-events: none; }
+  .v3-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #a1a1aa;
+  }
+  .v3-panel-body { display: flex; flex-direction: column; gap: 10px; }
+  .v3-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .v3-actions .btn { flex: 1; }
+
+  /* ============ V4: Structured Result Card ============ */
+  .v4-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .v4-url-panel, .v4-result-panel {
+    border: 1px solid #1f1f22;
+    border-radius: 10px;
+    background: #0d0d10;
+    padding: 12px;
+  }
+  .v4-result-panel.ok { background: #0b0e0a; border-color: #14532d; }
+  .v4-result-panel.warn { background: #17130d; border-color: #3f3220; }
+  .v4-result-panel.err { background: #130a0c; border-color: #7f1d1d; }
+  .v4-result-title {
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .v4-result-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 11px;
+  }
+  .v4-result-grid .k { color: #71717a; }
+  .v4-result-grid .v { color: #d4d4d8; }
+  .v4-result-grid .v.ok { color: #4ade80; }
+  .v4-result-grid .v.warn { color: #fbbf24; }
+  .v4-result-grid .v.err { color: #f87171; }
+  .v4-result-placeholder { font-size: 11px; color: #52525b; padding: 8px 0; }
+  .v4-toggles {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .v4-actions { display: flex; gap: 8px; }
+  .v4-actions .btn { flex: 1; }
+
+  /* ============ V5: Progressive Reveal ============ */
+  .v5-main {
+    border: 1px solid #1f1f22;
+    border-radius: 10px;
+    background: #0d0d10;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .v5-url-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .v5-url-row .field-input { flex: 1; }
+  .v5-status-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #a1a1aa;
+    min-height: 18px;
+  }
+  .v5-revealed {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed #1f1f22;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: slideDown 0.25s ease-out;
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .v5-facts {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .v5-name-row { display: flex; gap: 8px; align-items: center; }
+  .v5-name-row .field-input { flex: 1; }
+  .v5-actions { display: flex; gap: 8px; }
+  .v5-actions .btn { flex: 1; }
+
+  .skeleton {
+    background: linear-gradient(90deg, #1c1c1f 25%, #27272a 50%, #1c1c1f 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+    border-radius: 4px;
+    height: 11px;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+</style>
+</head>
+<body>
+
+<div class="page-title">Remote Tab — 5 UX Variations × 5 States</div>
+<div class="page-sub">Click a state tab in any card to see that variation's rendering for each state.</div>
+<div class="legend">
+  States: <code>IDLE</code> <code>VERIFYING</code> <code>VERIFIED</code> <code>HTTP WARN</code> <code>ERROR</code>
+</div>
+
+<div class="variations">
+
+  <!-- ============================================================ -->
+  <!-- VARIATION 1: Inline Verify -->
+  <!-- ============================================================ -->
+  <div class="variation" data-v="1">
+    <div class="variation-header">
+      <span class="variation-tag">Variation 1</span>
+      <div class="variation-title">Inline Verify + Collapsed Options</div>
+      <div class="variation-desc">Verify button sits inside the URL input. Status becomes a single chip. Name + reconnect hide behind an "Options" disclosure.</div>
+    </div>
+    <div class="state-tabs">
+      <button class="state-tab active" data-state="idle">Idle</button>
+      <button class="state-tab" data-state="verifying">Verifying</button>
+      <button class="state-tab" data-state="verified">Verified</button>
+      <button class="state-tab" data-state="http">HTTP Warn</button>
+      <button class="state-tab" data-state="error">Error</button>
+    </div>
+
+    <div class="states">
+      <!-- V1 IDLE -->
+      <div class="state-panel active" data-state="idle">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div></div>
+          <div class="v1-url-wrap">
+            <input class="field-input" type="text" placeholder="https://paperclip.example.com">
+            <button class="v1-inline-btn" disabled>Verify</button>
+          </div>
+          <div class="v1-status-row"><span class="dim">Enter a URL to begin.</span></div>
+          <details class="v1-disclosure"><summary>Options (name, reconnect)</summary></details>
+          <div class="v1-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V1 VERIFYING -->
+      <div class="state-panel" data-state="verifying">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div></div>
+          <div class="v1-url-wrap">
+            <input class="field-input" type="text" value="https://home.example.com">
+            <button class="v1-inline-btn" disabled><span class="spinner"></span>Verify</button>
+          </div>
+          <div class="v1-status-row"><span class="chip verifying"><span class="dot"></span>Verifying…</span><span>Reaching /api/health</span></div>
+          <details class="v1-disclosure"><summary>Options (name, reconnect)</summary></details>
+          <div class="v1-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V1 VERIFIED -->
+      <div class="state-panel" data-state="verified">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div></div>
+          <div class="v1-url-wrap">
+            <input class="field-input ok-border" type="text" value="https://home.example.com">
+            <button class="v1-inline-btn">Verify</button>
+          </div>
+          <div class="v1-status-row">
+            <span class="chip ok"><span class="dot"></span>Verified</span>
+            <span class="dim">·</span>
+            <span>Authenticated · Sign-in ready</span>
+            <span class="info-ic" tabindex="0" style="margin-left:auto;">i<span class="tt">Mode: authenticated<br>Auth: ready<br>Sign-in: available</span></span>
+          </div>
+          <details class="v1-disclosure"><summary>Options (name, reconnect)</summary>
+            <div class="v1-disclosure-body">
+              <div><label class="field-label">Display name <span style="color:#3f3f46">(optional)</span></label><input class="field-input" type="text" placeholder="e.g. Home Server"></div>
+              <div class="remember-row"><input type="checkbox" id="v1v-rem"><label for="v1v-rem">Reconnect on launch</label></div>
+            </div>
+          </details>
+          <div class="v1-actions">
+            <button class="btn primary">Sign-In</button>
+            <button class="btn">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V1 HTTP -->
+      <div class="state-panel" data-state="http">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div></div>
+          <div class="v1-url-wrap">
+            <input class="field-input" type="text" value="http://home.lan">
+            <button class="v1-inline-btn">Verify</button>
+          </div>
+          <div class="v1-status-row">
+            <span class="chip ok"><span class="dot"></span>Verified</span>
+            <span class="dim">·</span>
+            <span>Authenticated remote</span>
+          </div>
+          <div class="mini-warn" style="margin-bottom:14px;">
+            <span class="chip warn"><span class="dot"></span>HTTP</span>
+            <label><input type="checkbox"> Allow insecure connection</label>
+            <span class="info-ic" tabindex="0" style="margin-left:auto;">?<span class="tt">This URL disables TLS. Only continue if you trust the network path.</span></span>
+          </div>
+          <details class="v1-disclosure"><summary>Options (name, reconnect)</summary></details>
+          <div class="v1-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V1 ERROR -->
+      <div class="state-panel" data-state="error">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div></div>
+          <div class="v1-url-wrap">
+            <input class="field-input error-border" type="text" value="https://wrong.example.com">
+            <button class="v1-inline-btn">Verify</button>
+          </div>
+          <div class="v1-status-row">
+            <span class="chip err"><span class="dot"></span>Unreachable</span>
+          </div>
+          <div class="mini-err" style="margin-bottom:14px;">Host responded but is not a Paperclip remote, or is in local_trusted mode.</div>
+          <details class="v1-disclosure"><summary>Options (name, reconnect)</summary></details>
+          <div class="v1-actions">
+            <button class="btn">Retry</button>
+            <button class="btn primary disabled">Sign-In</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VARIATION 2: Single Dense Card -->
+  <!-- ============================================================ -->
+  <div class="variation" data-v="2">
+    <div class="variation-header">
+      <span class="variation-tag">Variation 2</span>
+      <div class="variation-title">Single Dense Card</div>
+      <div class="variation-desc">URL + name in one row. Verification facts live in a key:value strip inside the same card.</div>
+    </div>
+    <div class="state-tabs">
+      <button class="state-tab active" data-state="idle">Idle</button>
+      <button class="state-tab" data-state="verifying">Verifying</button>
+      <button class="state-tab" data-state="verified">Verified</button>
+      <button class="state-tab" data-state="http">HTTP Warn</button>
+      <button class="state-tab" data-state="error">Error</button>
+    </div>
+
+    <div class="states">
+      <!-- V2 IDLE -->
+      <div class="state-panel active" data-state="idle">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><span class="chip idle"><span class="dot"></span>Not verified</span></div>
+          <div class="v2-card">
+            <div class="v2-row">
+              <input class="field-input" type="text" placeholder="https://paperclip.example.com">
+              <input class="field-input name" type="text" placeholder="Name (optional)">
+            </div>
+            <div class="v2-status-strip"><span style="color:#52525b;">Run verify to inspect this remote.</span></div>
+          </div>
+          <div class="v2-toggles">
+            <div class="remember-row"><input type="checkbox" id="v2i-rem"><label for="v2i-rem">Reconnect on launch</label></div>
+            <button class="btn sm">Verify</button>
+          </div>
+          <div class="v2-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V2 VERIFYING -->
+      <div class="state-panel" data-state="verifying">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><span class="chip verifying"><span class="dot"></span>Verifying…</span></div>
+          <div class="v2-card">
+            <div class="v2-row">
+              <input class="field-input" type="text" value="https://home.example.com">
+              <input class="field-input name" type="text" value="Home">
+            </div>
+            <div class="v2-status-strip">
+              <div class="meta-group">
+                <span class="v2-meta"><span class="k">Mode</span><span class="v" style="color:#52525b;">checking…</span></span>
+                <span class="v2-meta"><span class="k">Auth</span><span class="v" style="color:#52525b;">checking…</span></span>
+                <span class="v2-meta"><span class="k">Sign-in</span><span class="v" style="color:#52525b;">—</span></span>
+              </div>
+              <span class="spinner"></span>
+            </div>
+          </div>
+          <div class="v2-toggles">
+            <div class="remember-row"><input type="checkbox" id="v2ing-rem"><label for="v2ing-rem">Reconnect on launch</label></div>
+            <button class="btn sm disabled">Verifying…</button>
+          </div>
+          <div class="v2-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V2 VERIFIED -->
+      <div class="state-panel" data-state="verified">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><span class="chip ok"><span class="dot"></span>Verified</span></div>
+          <div class="v2-card ok">
+            <div class="v2-row">
+              <input class="field-input ok-border" type="text" value="https://home.example.com">
+              <input class="field-input name" type="text" value="Home">
+            </div>
+            <div class="v2-status-strip">
+              <div class="meta-group">
+                <span class="v2-meta"><span class="k">Mode</span><span class="v ok">authenticated</span></span>
+                <span class="v2-meta"><span class="k">Auth</span><span class="v ok">ready</span></span>
+                <span class="v2-meta"><span class="k">Sign-in</span><span class="v ok">available</span></span>
+              </div>
+              <span class="info-ic" tabindex="0">i<span class="tt">Verified just now. /api/health OK.</span></span>
+            </div>
+          </div>
+          <div class="v2-toggles">
+            <div class="remember-row"><input type="checkbox" id="v2v-rem"><label for="v2v-rem">Reconnect on launch</label></div>
+            <button class="btn sm ghost">Re-verify</button>
+          </div>
+          <div class="v2-actions">
+            <button class="btn primary">Sign-In</button>
+            <button class="btn">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V2 HTTP -->
+      <div class="state-panel" data-state="http">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><span class="chip warn"><span class="dot"></span>HTTP</span></div>
+          <div class="v2-card">
+            <div class="v2-row">
+              <input class="field-input" type="text" value="http://home.lan">
+              <input class="field-input name" type="text" value="Home LAN">
+            </div>
+            <div class="v2-status-strip">
+              <div class="meta-group">
+                <span class="v2-meta"><span class="k">Mode</span><span class="v ok">authenticated</span></span>
+                <span class="v2-meta"><span class="k">Auth</span><span class="v ok">ready</span></span>
+                <span class="v2-meta"><span class="k">Transport</span><span class="v warn">HTTP · insecure</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="mini-warn" style="margin-bottom:14px;">
+            <span class="chip warn"><span class="dot"></span>HTTP</span>
+            <label><input type="checkbox" checked> I understand the risk</label>
+            <span class="info-ic" tabindex="0" style="margin-left:auto;">?<span class="tt">This URL disables TLS. Only continue if you trust the network path.</span></span>
+          </div>
+          <div class="v2-toggles">
+            <div class="remember-row"><input type="checkbox" id="v2h-rem"><label for="v2h-rem">Reconnect on launch</label></div>
+            <button class="btn sm ghost">Re-verify</button>
+          </div>
+          <div class="v2-actions">
+            <button class="btn primary">Sign-In</button>
+            <button class="btn">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V2 ERROR -->
+      <div class="state-panel" data-state="error">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><span class="chip err"><span class="dot"></span>Unreachable</span></div>
+          <div class="v2-card err">
+            <div class="v2-row">
+              <input class="field-input error-border" type="text" value="https://wrong.example.com">
+              <input class="field-input name" type="text" placeholder="Name (optional)">
+            </div>
+            <div class="v2-status-strip">
+              <div class="meta-group">
+                <span class="v2-meta"><span class="k">Status</span><span class="v err">no response</span></span>
+                <span class="v2-meta"><span class="k">Attempt</span><span class="v">2 retries</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="mini-err" style="margin-bottom:14px;">Host responded but is not Paperclip, or is in local_trusted mode.</div>
+          <div class="v2-toggles">
+            <div class="remember-row"><input type="checkbox" id="v2e-rem"><label for="v2e-rem">Reconnect on launch</label></div>
+            <button class="btn sm">Retry</button>
+          </div>
+          <div class="v2-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VARIATION 3: Stepper -->
+  <!-- ============================================================ -->
+  <div class="variation" data-v="3">
+    <div class="variation-header">
+      <span class="variation-tag">Variation 3</span>
+      <div class="variation-title">3-Step Stepper</div>
+      <div class="variation-desc">URL → Verify → Save. Earlier steps collapse to one-liners once complete.</div>
+    </div>
+    <div class="state-tabs">
+      <button class="state-tab active" data-state="idle">Idle</button>
+      <button class="state-tab" data-state="verifying">Verifying</button>
+      <button class="state-tab" data-state="verified">Verified</button>
+      <button class="state-tab" data-state="http">HTTP Warn</button>
+      <button class="state-tab" data-state="error">Error</button>
+    </div>
+
+    <div class="states">
+      <!-- V3 IDLE -->
+      <div class="state-panel active" data-state="idle">
+        <div class="frame">
+          <div class="v3-steps">
+            <div class="v3-step active"><span class="num">1</span>URL</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step"><span class="num">2</span>Verify</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step"><span class="num">3</span>Save</div>
+          </div>
+          <div class="v3-panel">
+            <div class="v3-panel-head"><span>Remote URL</span></div>
+            <div class="v3-panel-body">
+              <input class="field-input" type="text" placeholder="https://paperclip.example.com">
+            </div>
+          </div>
+          <div class="v3-panel muted">
+            <div class="v3-panel-head"><span>Verification</span></div>
+          </div>
+          <div class="v3-panel muted">
+            <div class="v3-panel-head"><span>Save &amp; connect</span></div>
+          </div>
+          <div class="v3-actions">
+            <button class="btn primary">Next →</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V3 VERIFYING -->
+      <div class="state-panel" data-state="verifying">
+        <div class="frame">
+          <div class="v3-steps">
+            <div class="v3-step done"><span class="num">✓</span>URL</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step active"><span class="num">2</span>Verify</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step"><span class="num">3</span>Save</div>
+          </div>
+          <div class="v3-panel" style="padding:10px 12px;">
+            <div class="v3-panel-head" style="margin-bottom:0;">
+              <span style="color:#d4d4d8;">https://home.example.com</span>
+              <button class="btn sm ghost">Edit</button>
+            </div>
+          </div>
+          <div class="v3-panel">
+            <div class="v3-panel-head"><span>Verification</span><span class="chip verifying"><span class="dot"></span>Verifying…</span></div>
+            <div class="v3-panel-body">
+              <div class="skeleton" style="width:70%;"></div>
+              <div class="skeleton" style="width:50%;"></div>
+            </div>
+          </div>
+          <div class="v3-panel muted">
+            <div class="v3-panel-head"><span>Save &amp; connect</span></div>
+          </div>
+          <div class="v3-actions">
+            <button class="btn primary disabled">Waiting…</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V3 VERIFIED -->
+      <div class="state-panel" data-state="verified">
+        <div class="frame">
+          <div class="v3-steps">
+            <div class="v3-step done"><span class="num">✓</span>URL</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step done"><span class="num">✓</span>Verify</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step active"><span class="num">3</span>Save</div>
+          </div>
+          <div class="v3-panel" style="padding:10px 12px;">
+            <div class="v3-panel-head" style="margin-bottom:0;">
+              <span style="color:#d4d4d8;">https://home.example.com</span>
+              <button class="btn sm ghost">Edit</button>
+            </div>
+          </div>
+          <div class="v3-panel" style="padding:10px 12px;">
+            <div class="v3-panel-head" style="margin-bottom:0;">
+              <span class="chip ok"><span class="dot"></span>Verified</span>
+              <span style="font-size:11px;color:#71717a;">authenticated · auth ready · sign-in available</span>
+            </div>
+          </div>
+          <div class="v3-panel">
+            <div class="v3-panel-head"><span>Save &amp; connect</span></div>
+            <div class="v3-panel-body">
+              <input class="field-input" type="text" placeholder="Display name (optional)">
+              <div class="remember-row"><input type="checkbox" id="v3v-rem"><label for="v3v-rem">Reconnect on launch</label></div>
+            </div>
+          </div>
+          <div class="v3-actions">
+            <button class="btn primary">Sign-In</button>
+            <button class="btn">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V3 HTTP -->
+      <div class="state-panel" data-state="http">
+        <div class="frame">
+          <div class="v3-steps">
+            <div class="v3-step done"><span class="num">✓</span>URL</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step active"><span class="num">!</span>Verify</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step"><span class="num">3</span>Save</div>
+          </div>
+          <div class="v3-panel" style="padding:10px 12px;">
+            <div class="v3-panel-head" style="margin-bottom:0;">
+              <span style="color:#d4d4d8;">http://home.lan</span>
+              <button class="btn sm ghost">Edit</button>
+            </div>
+          </div>
+          <div class="v3-panel">
+            <div class="v3-panel-head"><span>Verification</span><span class="chip warn"><span class="dot"></span>HTTP</span></div>
+            <div class="v3-panel-body">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="chip idle">authenticated</span>
+                <span class="chip idle">auth ready</span>
+                <span class="chip warn">transport insecure</span>
+              </div>
+              <div class="mini-warn">
+                <span class="chip warn"><span class="dot"></span>HTTP</span>
+                <label><input type="checkbox"> Allow insecure</label>
+                <span class="info-ic" tabindex="0" style="margin-left:auto;">?<span class="tt">TLS disabled. Only continue if you trust the network path.</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="v3-panel muted">
+            <div class="v3-panel-head"><span>Save &amp; connect</span></div>
+          </div>
+          <div class="v3-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+
+      <!-- V3 ERROR -->
+      <div class="state-panel" data-state="error">
+        <div class="frame">
+          <div class="v3-steps">
+            <div class="v3-step done"><span class="num">✓</span>URL</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step err"><span class="num">×</span>Verify</div>
+            <div class="v3-connector"></div>
+            <div class="v3-step"><span class="num">3</span>Save</div>
+          </div>
+          <div class="v3-panel" style="padding:10px 12px;">
+            <div class="v3-panel-head" style="margin-bottom:0;">
+              <span style="color:#d4d4d8;">https://wrong.example.com</span>
+              <button class="btn sm ghost">Edit</button>
+            </div>
+          </div>
+          <div class="v3-panel">
+            <div class="v3-panel-head"><span>Verification</span><span class="chip err"><span class="dot"></span>Failed</span></div>
+            <div class="v3-panel-body">
+              <div class="mini-err">Host responded but is not Paperclip, or is in local_trusted mode.</div>
+              <button class="btn sm">Retry</button>
+            </div>
+          </div>
+          <div class="v3-panel muted">
+            <div class="v3-panel-head"><span>Save &amp; connect</span></div>
+          </div>
+          <div class="v3-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+          <div class="frame-back" style="margin-top:14px;">&larr; Back</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VARIATION 4: Structured Result Card -->
+  <!-- ============================================================ -->
+  <div class="variation" data-v="4">
+    <div class="variation-header">
+      <span class="variation-tag reco">Recommended</span>
+      <span class="variation-tag">Variation 4</span>
+      <div class="variation-title">Structured Result Card</div>
+      <div class="variation-desc">URL panel on top; dedicated color-aware result card below exposes all verification facts.</div>
+    </div>
+    <div class="state-tabs">
+      <button class="state-tab active" data-state="idle">Idle</button>
+      <button class="state-tab" data-state="verifying">Verifying</button>
+      <button class="state-tab" data-state="verified">Verified</button>
+      <button class="state-tab" data-state="http">HTTP Warn</button>
+      <button class="state-tab" data-state="error">Error</button>
+    </div>
+
+    <div class="states">
+      <!-- V4 IDLE -->
+      <div class="state-panel active" data-state="idle">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v4-grid">
+            <div class="v4-url-panel">
+              <label class="field-label">Remote URL <span class="info-ic" tabindex="0">?<span class="tt">Desktop verifies /api/health and auth readiness. HTTPS recommended.</span></span></label>
+              <div style="display:flex;gap:8px;">
+                <input class="field-input" type="text" placeholder="https://paperclip.example.com">
+                <button class="btn sm disabled">Verify</button>
+              </div>
+            </div>
+            <div class="v4-result-panel">
+              <div class="v4-result-title"><span>Verification</span><span class="chip idle"><span class="dot"></span>Not verified</span></div>
+              <div class="v4-result-placeholder">Run verify to inspect deployment mode, auth readiness, and sign-in.</div>
+            </div>
+          </div>
+          <div class="v4-toggles">
+            <input class="field-input" type="text" placeholder="Display name (optional)" style="flex:1; max-width:180px;">
+            <div class="remember-row"><input type="checkbox" id="v4i-rem"><label for="v4i-rem">Reconnect on launch</label></div>
+          </div>
+          <div class="v4-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- V4 VERIFYING -->
+      <div class="state-panel" data-state="verifying">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v4-grid">
+            <div class="v4-url-panel">
+              <label class="field-label">Remote URL</label>
+              <div style="display:flex;gap:8px;">
+                <input class="field-input" type="text" value="https://home.example.com">
+                <button class="btn sm disabled"><span class="spinner"></span></button>
+              </div>
+            </div>
+            <div class="v4-result-panel">
+              <div class="v4-result-title"><span>Verification</span><span class="chip verifying"><span class="dot"></span>Verifying…</span></div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div class="skeleton" style="width:80%;"></div>
+                <div class="skeleton" style="width:60%;"></div>
+                <div class="skeleton" style="width:70%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="v4-toggles">
+            <input class="field-input" type="text" placeholder="Display name (optional)" style="flex:1; max-width:180px;">
+            <div class="remember-row"><input type="checkbox" id="v4ing-rem"><label for="v4ing-rem">Reconnect on launch</label></div>
+          </div>
+          <div class="v4-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- V4 VERIFIED -->
+      <div class="state-panel" data-state="verified">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v4-grid">
+            <div class="v4-url-panel">
+              <label class="field-label">Remote URL</label>
+              <div style="display:flex;gap:8px;">
+                <input class="field-input ok-border" type="text" value="https://home.example.com">
+                <button class="btn sm">Re-verify</button>
+              </div>
+            </div>
+            <div class="v4-result-panel ok">
+              <div class="v4-result-title"><span>Verification</span><span class="chip ok"><span class="dot"></span>Verified</span></div>
+              <div class="v4-result-grid">
+                <span class="k">Mode</span><span class="v ok">authenticated</span>
+                <span class="k">Auth</span><span class="v ok">ready</span>
+                <span class="k">Sign-in</span><span class="v ok">available</span>
+                <span class="k">Transport</span><span class="v">HTTPS · TLS valid</span>
+              </div>
+            </div>
+          </div>
+          <div class="v4-toggles">
+            <input class="field-input" type="text" placeholder="Display name (optional)" style="flex:1; max-width:180px;">
+            <div class="remember-row"><input type="checkbox" id="v4v-rem"><label for="v4v-rem">Reconnect on launch</label></div>
+          </div>
+          <div class="v4-actions">
+            <button class="btn primary">Sign-In</button>
+            <button class="btn">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- V4 HTTP -->
+      <div class="state-panel" data-state="http">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v4-grid">
+            <div class="v4-url-panel">
+              <label class="field-label">Remote URL</label>
+              <div style="display:flex;gap:8px;">
+                <input class="field-input" type="text" value="http://home.lan">
+                <button class="btn sm">Re-verify</button>
+              </div>
+            </div>
+            <div class="v4-result-panel warn">
+              <div class="v4-result-title"><span>Verification</span><span class="chip warn"><span class="dot"></span>HTTP</span></div>
+              <div class="v4-result-grid">
+                <span class="k">Mode</span><span class="v ok">authenticated</span>
+                <span class="k">Auth</span><span class="v ok">ready</span>
+                <span class="k">Sign-in</span><span class="v ok">available</span>
+                <span class="k">Transport</span><span class="v warn">HTTP · insecure</span>
+              </div>
+            </div>
+          </div>
+          <div class="mini-warn" style="margin-bottom:12px;">
+            <span class="chip warn"><span class="dot"></span>HTTP</span>
+            <label><input type="checkbox"> Allow insecure connection</label>
+            <span class="info-ic" tabindex="0" style="margin-left:auto;">?<span class="tt">TLS disabled. Only continue if you trust the network path.</span></span>
+          </div>
+          <div class="v4-toggles">
+            <input class="field-input" type="text" placeholder="Display name (optional)" style="flex:1; max-width:180px;">
+            <div class="remember-row"><input type="checkbox" id="v4h-rem"><label for="v4h-rem">Reconnect on launch</label></div>
+          </div>
+          <div class="v4-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- V4 ERROR -->
+      <div class="state-panel" data-state="error">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v4-grid">
+            <div class="v4-url-panel">
+              <label class="field-label">Remote URL</label>
+              <div style="display:flex;gap:8px;">
+                <input class="field-input error-border" type="text" value="https://wrong.example.com">
+                <button class="btn sm">Retry</button>
+              </div>
+            </div>
+            <div class="v4-result-panel err">
+              <div class="v4-result-title"><span>Verification</span><span class="chip err"><span class="dot"></span>Failed</span></div>
+              <div class="v4-result-grid">
+                <span class="k">Status</span><span class="v err">not Paperclip / local_trusted</span>
+                <span class="k">Attempt</span><span class="v">2 retries</span>
+              </div>
+            </div>
+          </div>
+          <div class="v4-toggles">
+            <input class="field-input" type="text" placeholder="Display name (optional)" style="flex:1; max-width:180px;">
+            <div class="remember-row"><input type="checkbox" id="v4e-rem"><label for="v4e-rem">Reconnect on launch</label></div>
+          </div>
+          <div class="v4-actions">
+            <button class="btn primary disabled">Sign-In</button>
+            <button class="btn disabled">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- VARIATION 5: Progressive Reveal -->
+  <!-- ============================================================ -->
+  <div class="variation" data-v="5">
+    <div class="variation-header">
+      <span class="variation-tag">Variation 5</span>
+      <div class="variation-title">Progressive Reveal</div>
+      <div class="variation-desc">Only URL + Verify initially. Everything else slides in after successful verify.</div>
+    </div>
+    <div class="state-tabs">
+      <button class="state-tab active" data-state="idle">Idle</button>
+      <button class="state-tab" data-state="verifying">Verifying</button>
+      <button class="state-tab" data-state="verified">Verified</button>
+      <button class="state-tab" data-state="http">HTTP Warn</button>
+      <button class="state-tab" data-state="error">Error</button>
+    </div>
+
+    <div class="states">
+      <!-- V5 IDLE -->
+      <div class="state-panel active" data-state="idle">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v5-main">
+            <div class="v5-url-row">
+              <input class="field-input" type="text" placeholder="https://paperclip.example.com">
+              <button class="btn primary disabled">Verify</button>
+            </div>
+            <div class="v5-status-inline"><span style="color:#52525b;">Enter a URL above to verify.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V5 VERIFYING -->
+      <div class="state-panel" data-state="verifying">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v5-main">
+            <div class="v5-url-row">
+              <input class="field-input" type="text" value="https://home.example.com">
+              <button class="btn primary disabled"><span class="spinner"></span></button>
+            </div>
+            <div class="v5-status-inline">
+              <span class="chip verifying"><span class="dot"></span>Verifying…</span>
+              <span>Reaching /api/health</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V5 VERIFIED -->
+      <div class="state-panel" data-state="verified">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v5-main">
+            <div class="v5-url-row">
+              <input class="field-input ok-border" type="text" value="https://home.example.com">
+              <button class="btn">Re-verify</button>
+            </div>
+            <div class="v5-status-inline">
+              <span class="chip ok"><span class="dot"></span>Verified</span>
+              <span>Authenticated, sign-in ready</span>
+              <span class="info-ic" tabindex="0" style="margin-left:auto;">i<span class="tt">Mode: authenticated<br>Auth: ready<br>Sign-in: available</span></span>
+            </div>
+            <div class="v5-revealed">
+              <div class="v5-facts">
+                <span class="chip ok">authenticated</span>
+                <span class="chip ok">auth ready</span>
+                <span class="chip ok">sign-in available</span>
+              </div>
+              <div class="v5-name-row">
+                <input class="field-input" type="text" placeholder="Display name (optional)">
+                <div class="remember-row" style="white-space:nowrap;"><input type="checkbox" id="v5v-rem"><label for="v5v-rem">Reconnect</label></div>
+              </div>
+              <div class="v5-actions">
+                <button class="btn primary">Sign-In</button>
+                <button class="btn">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V5 HTTP -->
+      <div class="state-panel" data-state="http">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v5-main">
+            <div class="v5-url-row">
+              <input class="field-input" type="text" value="http://home.lan">
+              <button class="btn">Re-verify</button>
+            </div>
+            <div class="v5-status-inline">
+              <span class="chip warn"><span class="dot"></span>HTTP</span>
+              <span>Authenticated but insecure transport</span>
+            </div>
+            <div class="v5-revealed">
+              <div class="v5-facts">
+                <span class="chip ok">authenticated</span>
+                <span class="chip ok">auth ready</span>
+                <span class="chip warn">insecure transport</span>
+              </div>
+              <div class="mini-warn">
+                <span class="chip warn"><span class="dot"></span>HTTP</span>
+                <label><input type="checkbox"> Allow insecure</label>
+                <span class="info-ic" tabindex="0" style="margin-left:auto;">?<span class="tt">TLS disabled. Only continue if you trust the network path.</span></span>
+              </div>
+              <div class="v5-name-row">
+                <input class="field-input" type="text" placeholder="Display name (optional)">
+                <div class="remember-row" style="white-space:nowrap;"><input type="checkbox" id="v5h-rem"><label for="v5h-rem">Reconnect</label></div>
+              </div>
+              <div class="v5-actions">
+                <button class="btn primary disabled">Sign-In</button>
+                <button class="btn disabled">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V5 ERROR -->
+      <div class="state-panel" data-state="error">
+        <div class="frame">
+          <div class="frame-head"><div class="section-title" style="margin:0;">Connect to Remote</div><div class="frame-back">&larr; Back</div></div>
+          <div class="v5-main">
+            <div class="v5-url-row">
+              <input class="field-input error-border" type="text" value="https://wrong.example.com">
+              <button class="btn">Retry</button>
+            </div>
+            <div class="v5-status-inline">
+              <span class="chip err"><span class="dot"></span>Unreachable</span>
+              <span>Not a Paperclip remote</span>
+            </div>
+            <div class="v5-revealed">
+              <div class="mini-err">Host responded but is not Paperclip, or is in local_trusted mode.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  document.querySelectorAll('.variation').forEach(v => {
+    const tabs = v.querySelectorAll('.state-tab');
+    const panels = v.querySelectorAll('.state-panel');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const state = tab.dataset.state;
+        tabs.forEach(t => t.classList.toggle('active', t === tab));
+        panels.forEach(p => p.classList.toggle('active', p.dataset.state === state));
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
