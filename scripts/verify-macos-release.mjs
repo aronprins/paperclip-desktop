@@ -132,6 +132,7 @@ function collectChecks(appPath) {
   const nodeBinary = allEntries.find((entry) => entry.endsWith("/Contents/Resources/app-server/node-bin/node")) || null;
   const postgresBinaries = allEntries.filter((entry) => /@embedded-postgres\/darwin-[^/]+\/native\/bin\/[^/]+$/.test(entry));
   const nativeNodeModules = allEntries.filter((entry) => entry.endsWith(".node"));
+  const nativeBareModules = allEntries.filter((entry) => entry.endsWith(".bare"));
   const nativeDylibs = allEntries.filter((entry) => entry.endsWith(".dylib"));
   const mainExecutables = allEntries.filter((entry) => /\/Contents\/MacOS\/[^/]+$/.test(entry) && !entry.includes("/Contents/Frameworks/"));
 
@@ -142,6 +143,7 @@ function collectChecks(appPath) {
     ["nodeBinary", nodeBinary ? [nodeBinary] : []],
     ["postgresBinary", postgresBinaries],
     ["nativeNodeModule", nativeNodeModules],
+    ["nativeBareModule", nativeBareModules],
     ["nativeDylib", nativeDylibs],
   ];
 

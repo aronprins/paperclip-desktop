@@ -163,7 +163,7 @@ function collectSignableBinaries(dir, out = []) {
       continue;
     }
 
-    const looksNative = entry.endsWith(".dylib") || entry.endsWith(".node") || (stat.mode & 0o111) !== 0;
+    const looksNative = entry.endsWith(".dylib") || entry.endsWith(".node") || entry.endsWith(".bare") || (stat.mode & 0o111) !== 0;
     if (!looksNative || !isMachOBinary(full)) continue;
 
     out.push({ path: full, mode: stat.mode });
@@ -212,8 +212,8 @@ export default async function afterPack(context) {
   copyServerNodeModules(context, appServerPath);
 
   const signableBinaries = collectSignableBinaries(appServerPath).sort((left, right) => {
-    const leftIsLibrary = left.path.endsWith(".dylib") || left.path.endsWith(".node");
-    const rightIsLibrary = right.path.endsWith(".dylib") || right.path.endsWith(".node");
+    const leftIsLibrary = left.path.endsWith(".dylib") || left.path.endsWith(".node") || left.path.endsWith(".bare");
+    const rightIsLibrary = right.path.endsWith(".dylib") || right.path.endsWith(".node") || right.path.endsWith(".bare");
     if (leftIsLibrary !== rightIsLibrary) return leftIsLibrary ? -1 : 1;
 
     const leftDepth = left.path.split("/").length;
@@ -222,7 +222,7 @@ export default async function afterPack(context) {
   });
 
   for (const { path: target, mode } of signableBinaries) {
-    const isLibrary = target.endsWith(".dylib") || target.endsWith(".node");
+    const isLibrary = target.endsWith(".dylib") || target.endsWith(".node") || target.endsWith(".bare");
     const needsEntitlements = !isLibrary && (mode & 0o111) !== 0;
     signTarget(target, signingIdentity, needsEntitlements ? inheritedEntitlements : undefined);
   }
