@@ -131,6 +131,40 @@ function verifyCodesign(target, deep = false) {
   run("codesign", args);
 }
 
+function machOArchitectures(target) {
+  return run("lipo", ["-archs", target]).stdout.trim().split(/\s+/).filter(Boolean);
+}
+
+function verifyBundledNativeArchitectures(nodeBinary, targets) {
+  if (!nodeBinary) return;
+
+  const expectedArchitectures = machOArchitectures(nodeBinary);
+  if (expectedArchitectures.length === 0) {
+    throw new Error(`Unable to determine bundled Node architecture for ${nodeBinary}.`);
+  }
+
+  for (const target of targets) {
+    const architectures = machOArchitectures(target);
+    const hasCompatibleArchitecture = expectedArchitectures.some((arch) => architectures.includes(arch));
+    if (!hasCompatibleArchitecture) {
+      throw new Error(
+        `Packaged native binary architecture mismatch: ${relative(target)} has [${architectures.join(", ")}], ` +
+        `but bundled Node has [${expectedArchitectures.join(", ")}].`,
+      );
+    }
+  }
+}
+
+function isDormantAlternateArchBinary(target, expectedArchitectures) {
+  if (expectedArchitectures.includes("x86_64")) return false;
+  return (
+    target.includes("/prebuilds/darwin-x64/") ||
+    target.includes("/prebuilds/ios-x64-simulator/") ||
+    target.includes("/node_modules/@esbuild/darwin-x64/") ||
+    target.includes("/node_modules/esbuild/lib/downloaded-@esbuild-darwin-x64-")
+  );
+}
+
 function dependencyPath(nodeModulesDir, dependencyName) {
   return join(nodeModulesDir, ...dependencyName.split("/"), "package.json");
 }
@@ -173,6 +207,15 @@ function collectChecks(appPath) {
     if (entry === nodeBinary || postgresBinaries.includes(entry)) return false;
     return isMachOBinary(entry);
   });
+
+  const expectedArchitectures = nodeBinary ? machOArchitectures(nodeBinary) : [];
+  const architectureTargets = [
+    ...postgresBinaries,
+    ...nativeNodeModules,
+    ...nativeDylibs,
+    ...appServerMachOBinaries,
+  ].filter((target) => !isDormantAlternateArchBinary(target, expectedArchitectures));
+  verifyBundledNativeArchitectures(nodeBinary, architectureTargets);
 
   const namedChecks = [
     ["appBundle", [appPath]],
