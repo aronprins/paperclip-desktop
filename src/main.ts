@@ -30,6 +30,11 @@ import { preflightRemoteConnection } from "./connection/preflight";
 import { ConnectionStore, getConnectionsFilePath } from "./connection/profiles";
 import { normalizeRemoteUrl } from "./connection/validate";
 import {
+  applyDesktopUserDataOverride,
+  assertIsolatedRuntimePaths,
+  resolvePaperclipHomePath,
+} from "./runtime-safety";
+import {
   isNavigationAllowed,
   localPartition,
   remotePartitionForProfile,
@@ -89,6 +94,7 @@ type LauncherPresentation = "standalone" | "attached";
 type BootStep = "init" | "database" | "server" | "ready";
 
 app.setName("Paperclip");
+applyDesktopUserDataOverride(app, process.env);
 
 // ---------------------------------------------------------------------------
 // Paths and version helpers
@@ -308,13 +314,12 @@ function killOrphanedServer(): void {
 }
 
 function resolvePaperclipHome(): string {
-  const home = process.env.HOME ?? "";
-  const defaultHome = path.join(home, ".paperclip");
-  const defaultInstance = path.join(defaultHome, "instances", "default", "db");
-  if (home && fs.existsSync(defaultInstance)) {
-    return defaultHome;
-  }
-  return app.getPath("userData");
+  return resolvePaperclipHomePath({
+    env: process.env,
+    homePath: app.getPath("home"),
+    userDataPath: app.getPath("userData"),
+    pathExists: fs.existsSync,
+  });
 }
 
 function startServer(port: number): ChildProcess {
@@ -1521,6 +1526,15 @@ function remoteErrorTitle(result: RemotePreflightResult): string {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
+  const paperclipHome = resolvePaperclipHome();
+  assertIsolatedRuntimePaths({
+    env: process.env,
+    userDataPath: app.getPath("userData"),
+    paperclipHome,
+    homePath: app.getPath("home"),
+    platform: process.platform,
+  });
+
   killOrphanedServer();
   connectionStore = new ConnectionStore(getConnectionsFilePath(app.getPath("userData")));
   registerLauncherIpc();
