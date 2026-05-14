@@ -220,10 +220,19 @@ The authority should be your `Developer ID Application` identity.
 
 Before anything is uploaded:
 
-- launch and test the exact packaged `.app` bundles
+- run the packaged-app smoke test against the exact packaged `.app` bundles
 - confirm the upstream Paperclip version in the built payload
 - confirm the app version shown in the bundle metadata matches `package.json`
 - confirm signatures are valid on both architectures
+
+Use the smoke-test script instead of launching release candidates directly from Finder or a terminal:
+
+```bash
+pnpm smoke:mac:packaged -- --app 'release/local-macos/x64/mac/Paperclip Desktop.app'
+pnpm smoke:mac:packaged -- --app 'release/local-macos/arm64/mac-arm64/Paperclip Desktop.app'
+```
+
+The smoke test creates temporary `userData` and `PAPERCLIP_HOME` directories, sets `PAPERCLIP_DESKTOP_REQUIRE_ISOLATED_DATA=1`, waits for `Server listening on`, checks `/get-session`, and fails if the packaged app logs a production Paperclip data path.
 
 Do not submit or publish artifacts you have not tested locally.
 
@@ -516,7 +525,7 @@ For the common case, use this order:
 1. set the desktop version and upstream version
 2. `pnpm release:mac:local:x64`
 3. `pnpm release:mac:local:arm64`
-4. test the exact local `.app` bundles
+4. smoke-test the exact local `.app` bundles with `pnpm smoke:mac:packaged -- --app '<APP_PATH>'`
 5. create and push `v<DESKTOP_VERSION>`
 6. prepare `release/local-macos/release-assets`
 7. create or update a draft release and upload ZIP/DMG assets only
@@ -542,6 +551,7 @@ For the common case, use this order:
 - Do not use a public release plus `latest-mac.yml` as a staging mechanism.
 - Do not run `Release Desktop` against a stable version tag unless you intentionally want it to publish final release assets.
 - Do not change `stagingPercentage` on pre-notarization assets.
+- Do not launch packaged release candidates directly against normal app data. Use `scripts/smoke-test-packaged-macos.mjs`, which requires isolated `userData` and `PAPERCLIP_HOME` paths.
 
 ## File References
 
@@ -554,6 +564,7 @@ Primary scripts and workflows:
 - `scripts/repackage-prebuilt-macos.mjs`
 - `scripts/prepare-macos-release-assets.mjs`
 - `scripts/publish-macos-release-assets.mjs`
+- `scripts/smoke-test-packaged-macos.mjs`
 - `scripts/verify-macos-release.mjs`
 
 Background docs:
