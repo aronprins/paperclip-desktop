@@ -55,40 +55,26 @@ export function readOrCreateLocalNetworkAuthSecret(userDataPath: string): string
 export function buildLocalNetworkExposureConfig(input: {
   port: number;
   authSecret: string;
-  baseEnv?: NodeJS.ProcessEnv;
   hostname?: string;
   interfaces?: NetworkInterfaceMap;
 }): LocalNetworkExposureConfig {
-  const baseEnv = input.baseEnv ?? process.env;
   const addresses = listLocalNetworkIpv4Addresses(input.interfaces);
   if (addresses.length === 0) {
     throw new Error("No active IPv4 local network address was found.");
   }
 
   const hostname = normalizeHostname(input.hostname ?? os.hostname());
-  const existingAllowedHostnames = parseCsv(baseEnv.PAPERCLIP_ALLOWED_HOSTNAMES);
   const allowedHostnames = uniqueStrings([
-    ...existingAllowedHostnames,
     ...addresses,
     ...(hostname && !isLoopbackHostname(hostname) ? [hostname] : []),
     "localhost",
     "127.0.0.1",
   ]);
 
-  const fallbackPublicBaseUrl = `http://${addresses[0]}:${input.port}`;
-  const authPublicBaseUrl = firstNonEmpty([
-    baseEnv.PAPERCLIP_AUTH_PUBLIC_BASE_URL,
-    baseEnv.BETTER_AUTH_URL,
-    baseEnv.BETTER_AUTH_BASE_URL,
-    baseEnv.PAPERCLIP_PUBLIC_URL,
-  ]) ?? fallbackPublicBaseUrl;
-  const authSecret = firstNonEmpty([
-    baseEnv.BETTER_AUTH_SECRET,
-    baseEnv.PAPERCLIP_AGENT_JWT_SECRET,
-    input.authSecret,
-  ]);
+  const authPublicBaseUrl = `http://${addresses[0]}:${input.port}`;
+  const authSecret = input.authSecret.trim();
 
-  if (!authSecret) {
+  if (!isStrongAuthSecret(authSecret)) {
     throw new Error("Local network mode requires an auth secret.");
   }
 
@@ -102,6 +88,7 @@ export function buildLocalNetworkExposureConfig(input: {
       PAPERCLIP_BIND: "lan",
       PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
       PAPERCLIP_AUTH_PUBLIC_BASE_URL: authPublicBaseUrl,
+      PAPERCLIP_PUBLIC_URL: authPublicBaseUrl,
       BETTER_AUTH_SECRET: authSecret,
     },
   };
@@ -133,13 +120,6 @@ function secureSecretFile(secretPath: string): void {
   }
 }
 
-function parseCsv(value: string | undefined): string[] {
-  return (value ?? "")
-    .split(",")
-    .map(normalizeHostname)
-    .filter(Boolean);
-}
-
 function normalizeHostname(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -150,8 +130,4 @@ function isLoopbackHostname(value: string): boolean {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-}
-
-function firstNonEmpty(values: Array<string | undefined>): string | undefined {
-  return values.map((value) => value?.trim()).find((value): value is string => !!value);
 }

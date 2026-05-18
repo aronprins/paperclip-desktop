@@ -27,11 +27,8 @@ test("local network address detection keeps only usable external IPv4 addresses"
 test("local network exposure config enables authenticated LAN mode", () => {
   const config = buildLocalNetworkExposureConfig({
     port: 3100,
-    authSecret: "generated-secret",
+    authSecret: "generated-secret-with-enough-entropy",
     hostname: "Paperclip-Host.local",
-    baseEnv: {
-      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip.local",
-    },
     interfaces: {
       en0: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
     },
@@ -41,29 +38,44 @@ test("local network exposure config enables authenticated LAN mode", () => {
   assert.equal(config.env.PAPERCLIP_DEPLOYMENT_MODE, "authenticated");
   assert.equal(config.env.PAPERCLIP_DEPLOYMENT_EXPOSURE, "private");
   assert.equal(config.env.PAPERCLIP_BIND, "lan");
-  assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret");
+  assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret-with-enough-entropy");
+  assert.equal(config.env.PAPERCLIP_PUBLIC_URL, "http://192.168.1.23:3100");
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /192\.168\.1\.23/);
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip-host\.local/);
-  assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip\.local/);
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /localhost/);
 });
 
-test("local network exposure respects existing public auth URL and auth secret", () => {
-  const config = buildLocalNetworkExposureConfig({
-    port: 3100,
-    authSecret: "generated-secret",
-    baseEnv: {
-      PAPERCLIP_AUTH_PUBLIC_BASE_URL: "http://paperclip.lan:3200",
-      BETTER_AUTH_SECRET: "existing-secret",
-    },
-    interfaces: {
-      en0: [{ address: "10.0.0.15", family: "IPv4", internal: false }],
-    },
-  });
+test("local network exposure ignores ambient public URL and host allow-list env", () => {
+  const previousPublicUrl = process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL;
+  const previousAllowedHostnames = process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
+  process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL = "https://paperclip.example.com";
+  process.env.PAPERCLIP_ALLOWED_HOSTNAMES = "paperclip.example.com";
 
-  assert.equal(config.primaryUrl, "http://paperclip.lan:3200");
-  assert.equal(config.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL, "http://paperclip.lan:3200");
-  assert.equal(config.env.BETTER_AUTH_SECRET, "existing-secret");
+  try {
+    const config = buildLocalNetworkExposureConfig({
+      port: 3100,
+      authSecret: "generated-secret-with-enough-entropy",
+      interfaces: {
+        en0: [{ address: "10.0.0.15", family: "IPv4", internal: false }],
+      },
+    });
+
+    assert.equal(config.primaryUrl, "http://10.0.0.15:3100");
+    assert.equal(config.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL, "http://10.0.0.15:3100");
+    assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret-with-enough-entropy");
+    assert.doesNotMatch(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip\.example\.com/);
+  } finally {
+    if (previousPublicUrl === undefined) {
+      delete process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL;
+    } else {
+      process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL = previousPublicUrl;
+    }
+    if (previousAllowedHostnames === undefined) {
+      delete process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
+    } else {
+      process.env.PAPERCLIP_ALLOWED_HOSTNAMES = previousAllowedHostnames;
+    }
+  }
 });
 
 test("local network auth secret is stable once written", () => {

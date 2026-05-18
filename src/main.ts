@@ -342,7 +342,6 @@ function startServer(port: number, options: { exposeOnLocalNetwork?: boolean } =
     ? buildLocalNetworkExposureConfig({
         port,
         authSecret: readOrCreateLocalNetworkAuthSecret(app.getPath("userData")),
-        baseEnv: process.env,
       })
     : null;
   if (localNetworkExposure) {
