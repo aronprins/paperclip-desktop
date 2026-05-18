@@ -20,9 +20,11 @@ import { checkForUpdatesFromMenu, initAutoUpdater } from "./updater";
 import { getLauncherHtml } from "./launcher-html";
 import { handleSwipeNavigation } from "./navigation-gestures";
 import {
+  isSameProcess,
   shouldHandleTrackedServerExit,
   shouldKillSupersededServer,
   shouldRestorePreviousTrackedServer,
+  shouldStopPreviousLocalServerForExposureChange,
   shouldStopAttemptedServer,
 } from "./connection/local-server-lifecycle";
 import { probeLocalServerHealth } from "./connection/local-server-health";
@@ -947,7 +949,12 @@ async function bootLocal(options: {
   }
 
   const previousConnectionMode = currentConnection?.mode ?? null;
-  const previousServerProcess = previousConnectionMode === "local_embedded" ? serverProcess : null;
+  let previousServerProcess = previousConnectionMode === "local_embedded" ? serverProcess : null;
+  const switchingLocalExposure = shouldStopPreviousLocalServerForExposureChange({
+    previousMode: previousConnectionMode,
+    currentExposeOnLocalNetwork: currentConnection?.localNetworkEnabled,
+    nextExposeOnLocalNetwork: exposeOnLocalNetwork,
+  });
   let nextServerProcess: ChildProcess | null = null;
   await ensureLauncherWindow("local-boot");
 
@@ -960,6 +967,15 @@ async function bootLocal(options: {
     }
 
     sendBootStatus("database", "Launching embedded PostgreSQL...", 15);
+    if (switchingLocalExposure) {
+      sendBootStatus("server", "Restarting local server...", 25);
+      await killChildProcess(previousServerProcess);
+      if (isSameProcess(serverProcess, previousServerProcess)) {
+        trackServerProcess(null);
+      }
+      previousServerProcess = null;
+    }
+
     const launch = startServer(serverPort, { exposeOnLocalNetwork });
     nextServerProcess = launch.process;
     trackServerProcess(nextServerProcess);

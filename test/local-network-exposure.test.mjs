@@ -45,6 +45,19 @@ test("local network exposure config enables authenticated LAN mode", () => {
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /localhost/);
 });
 
+test("local network exposure excludes public-looking hostnames from allow-list", () => {
+  const config = buildLocalNetworkExposureConfig({
+    port: 3100,
+    authSecret: "generated-secret-with-enough-entropy",
+    hostname: "paperclip.example.com",
+    interfaces: {
+      en0: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
+    },
+  });
+
+  assert.doesNotMatch(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip\.example\.com/);
+});
+
 test("local network exposure ignores ambient public URL and host allow-list env", () => {
   const previousPublicUrl = process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL;
   const previousAllowedHostnames = process.env.PAPERCLIP_ALLOWED_HOSTNAMES;

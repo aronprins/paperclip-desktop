@@ -66,7 +66,7 @@ export function buildLocalNetworkExposureConfig(input: {
   const hostname = normalizeHostname(input.hostname ?? os.hostname());
   const allowedHostnames = uniqueStrings([
     ...addresses,
-    ...(hostname && !isLoopbackHostname(hostname) ? [hostname] : []),
+    ...(isSafeLocalHostname(hostname) ? [hostname] : []),
     "localhost",
     "127.0.0.1",
   ]);
@@ -126,6 +126,20 @@ function normalizeHostname(value: string | undefined): string {
 
 function isLoopbackHostname(value: string): boolean {
   return value === "localhost" || value === "127.0.0.1" || value === "::1";
+}
+
+function isSafeLocalHostname(value: string): boolean {
+  if (!value || isLoopbackHostname(value)) {
+    return false;
+  }
+
+  return (
+    !value.includes(".") ||
+    value.endsWith(".local") ||
+    value.endsWith(".lan") ||
+    value.endsWith(".home") ||
+    value.endsWith(".internal")
+  );
 }
 
 function uniqueStrings(values: string[]): string[] {
