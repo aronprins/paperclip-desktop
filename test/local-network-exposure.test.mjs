@@ -16,12 +16,27 @@ test("local network address detection keeps only usable external IPv4 addresses"
   const addresses = listLocalNetworkIpv4Addresses({
     lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
     en0: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
+    en3: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
     en2: [{ address: "8.8.8.8", family: "IPv4", internal: false }],
     en1: [{ address: "169.254.1.10", family: "IPv4", internal: false }],
+    cgnat: [{ address: "100.64.1.10", family: "IPv4", internal: false }],
     utun: [{ address: "fd00::1", family: "IPv6", internal: false }],
   });
 
   assert.deepEqual(addresses, ["192.168.1.23"]);
+});
+
+test("local network address detection accepts RFC1918 ranges only", () => {
+  const addresses = listLocalNetworkIpv4Addresses({
+    ten: [{ address: "10.0.0.9", family: "IPv4", internal: false }],
+    "172low": [{ address: "172.15.255.255", family: "IPv4", internal: false }],
+    "172start": [{ address: "172.16.0.1", family: "IPv4", internal: false }],
+    "172end": [{ address: "172.31.255.254", family: "IPv4", internal: false }],
+    "172high": [{ address: "172.32.0.1", family: "IPv4", internal: false }],
+    lan: [{ address: "192.168.0.5", family: "IPv4", internal: false }],
+  });
+
+  assert.deepEqual(addresses, ["10.0.0.9", "172.16.0.1", "172.31.255.254", "192.168.0.5"]);
 });
 
 test("local network exposure config enables authenticated LAN mode", () => {
@@ -84,6 +99,12 @@ test("local network exposure ignores ambient public URL and host allow-list env"
     assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret-with-enough-entropy");
     assert.equal(config.env.BETTER_AUTH_TRUSTED_ORIGINS, "");
     assert.doesNotMatch(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip\.example\.com/);
+    assert.deepEqual(
+      Object.entries(config.env)
+        .filter(([, value]) => value.includes("paperclip.example.com"))
+        .map(([key]) => key),
+      [],
+    );
   } finally {
     if (previousPublicUrl === undefined) {
       delete process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL;
@@ -101,6 +122,32 @@ test("local network exposure ignores ambient public URL and host allow-list env"
       process.env.BETTER_AUTH_TRUSTED_ORIGINS = previousTrustedOrigins;
     }
   }
+});
+
+test("local network exposure rejects missing private addresses", () => {
+  assert.throws(
+    () => buildLocalNetworkExposureConfig({
+      port: 3100,
+      authSecret: "generated-secret-with-enough-entropy",
+      interfaces: {
+        en0: [{ address: "8.8.8.8", family: "IPv4", internal: false }],
+      },
+    }),
+    /No active IPv4 local network address/,
+  );
+});
+
+test("local network exposure rejects weak auth secrets", () => {
+  assert.throws(
+    () => buildLocalNetworkExposureConfig({
+      port: 3100,
+      authSecret: "too-short",
+      interfaces: {
+        en0: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
+      },
+    }),
+    /requires an auth secret/,
+  );
 });
 
 test("local network auth secret is stable once written", () => {
