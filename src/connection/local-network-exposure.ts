@@ -37,7 +37,8 @@ export function readOrCreateLocalNetworkAuthSecret(userDataPath: string): string
   const secretPath = path.join(userDataPath, LOCAL_NETWORK_AUTH_SECRET_FILE_NAME);
   try {
     const existing = fs.readFileSync(secretPath, "utf8").trim();
-    if (existing) {
+    if (isStrongAuthSecret(existing)) {
+      secureSecretFile(secretPath);
       return existing;
     }
   } catch {
@@ -47,11 +48,7 @@ export function readOrCreateLocalNetworkAuthSecret(userDataPath: string): string
   const secret = randomBytes(32).toString("base64url");
   fs.mkdirSync(path.dirname(secretPath), { recursive: true });
   fs.writeFileSync(secretPath, `${secret}\n`, { encoding: "utf8", mode: 0o600 });
-  try {
-    fs.chmodSync(secretPath, 0o600);
-  } catch {
-    // best effort on platforms that do not support chmod
-  }
+  secureSecretFile(secretPath);
   return secret;
 }
 
@@ -118,10 +115,22 @@ function isUsableIpv4Address(address: string): boolean {
 
   const [a, b] = parts;
   return (
-    a !== 0 &&
-    a !== 127 &&
-    !(a === 169 && b === 254)
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
   );
+}
+
+function isStrongAuthSecret(value: string): boolean {
+  return value.length >= 32;
+}
+
+function secureSecretFile(secretPath: string): void {
+  try {
+    fs.chmodSync(secretPath, 0o600);
+  } catch {
+    // best effort on platforms that do not support chmod
+  }
 }
 
 function parseCsv(value: string | undefined): string[] {

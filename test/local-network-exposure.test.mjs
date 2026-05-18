@@ -16,6 +16,7 @@ test("local network address detection keeps only usable external IPv4 addresses"
   const addresses = listLocalNetworkIpv4Addresses({
     lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
     en0: [{ address: "192.168.1.23", family: "IPv4", internal: false }],
+    en2: [{ address: "8.8.8.8", family: "IPv4", internal: false }],
     en1: [{ address: "169.254.1.10", family: "IPv4", internal: false }],
     utun: [{ address: "fd00::1", family: "IPv6", internal: false }],
   });
@@ -73,4 +74,14 @@ test("local network auth secret is stable once written", () => {
 
   assert.equal(first, second);
   assert.ok(first.length >= 32);
+});
+
+test("local network auth secret replaces weak existing values", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-lan-weak-secret-"));
+  fs.writeFileSync(path.join(tempDir, "paperclip-lan-auth-secret"), "weak\n", "utf8");
+
+  const secret = readOrCreateLocalNetworkAuthSecret(tempDir);
+
+  assert.notEqual(secret, "weak");
+  assert.ok(secret.length >= 32);
 });
