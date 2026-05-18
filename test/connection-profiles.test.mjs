@@ -50,11 +50,15 @@ test("connection store keeps a synthetic local profile", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-local-"));
   const store = new ConnectionStore(getConnectionsFilePath(tempDir));
 
+  store.setLocalNetworkEnabled(true);
   store.recordConnectionResult(LOCAL_PROFILE_ID, undefined, "2026-04-06T10:00:00.000Z");
 
   const localProfile = store.getProfile(LOCAL_PROFILE_ID);
   assert.equal(localProfile.mode, "local_embedded");
   assert.equal(localProfile.lastConnectedAt, "2026-04-06T10:00:00.000Z");
+
+  const reloaded = new ConnectionStore(getConnectionsFilePath(tempDir));
+  assert.equal(reloaded.getSnapshot().state.localNetworkEnabled, true);
 });
 
 test("connection store duplicates and deletes remote profiles", () => {

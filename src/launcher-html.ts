@@ -133,6 +133,28 @@ export function getLauncherHtml(): string {
     max-width: 300px;
   }
 
+  .local-network-panel {
+    width: 340px;
+    margin-top: 18px;
+    padding: 12px;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    background: #111114;
+  }
+  .local-network-panel .remember-row {
+    margin: 0;
+    align-items: flex-start;
+  }
+  .local-network-title {
+    color: #e4e4e7;
+  }
+  .local-network-detail {
+    display: block;
+    margin-top: 4px;
+    color: #71717a;
+    line-height: 1.35;
+  }
+
   .remember-row {
     display: flex;
     align-items: center;
@@ -860,6 +882,12 @@ export function getLauncherHtml(): string {
       <div class="local-hero-title">Run Local Server</div>
       <div class="local-hero-desc">Start the embedded Paperclip server on this machine with trusted local access.</div>
       <button class="btn primary" style="min-width:180px;" onclick="launchLocal()">Launch</button>
+      <div class="local-network-panel">
+        <div class="remember-row">
+          <input type="checkbox" id="shareLocalNetwork">
+          <label for="shareLocalNetwork"><span class="local-network-title">Share on local network</span><span class="local-network-detail">Requires sign-in and allows devices on this network to reach Paperclip over HTTP.</span></label>
+        </div>
+      </div>
       <div class="remember-row" style="margin-top:20px;margin-bottom:0;">
         <input type="checkbox" id="rememberLocal">
         <label for="rememberLocal">Always start local on launch</label>
@@ -1093,6 +1121,10 @@ function getRemoteInsecureHttpChoice() {
   return !!document.getElementById("allowInsecureHttp")?.checked;
 }
 
+function getLocalNetworkChoice() {
+  return !!document.getElementById("shareLocalNetwork")?.checked;
+}
+
 function setRemoteInsecureHttpChoice(checked) {
   const checkbox = document.getElementById("allowInsecureHttp");
   if (checkbox) checkbox.checked = !!checked;
@@ -1269,11 +1301,12 @@ function renderTabRemoteList() {
 
 async function launchLocal() {
   const rememberChoice = document.getElementById("rememberLocal").checked;
+  const exposeOnLocalNetwork = getLocalNetworkChoice();
   await launcher.setChooserMode("local_embedded");
-  lastErrorAction = { type: "local", rememberChoice };
+  lastErrorAction = { type: "local", rememberChoice, exposeOnLocalNetwork };
   resetLocalBoot();
   showView("local-boot");
-  await launcher.connectLocal({ rememberChoice });
+  await launcher.connectLocal({ rememberChoice, exposeOnLocalNetwork });
 }
 
 function openAddRemoteFromChooser() {
@@ -1446,7 +1479,10 @@ async function retryLastAction() {
   if (lastErrorAction.type === "local") {
     resetLocalBoot();
     showView("local-boot");
-    await launcher.connectLocal({ rememberChoice: !!lastErrorAction.rememberChoice });
+    await launcher.connectLocal({
+      rememberChoice: !!lastErrorAction.rememberChoice,
+      exposeOnLocalNetwork: !!lastErrorAction.exposeOnLocalNetwork,
+    });
     return;
   }
 
@@ -1499,10 +1535,13 @@ function configureErrorButtons() {
 
 async function switchToLocal() {
   const rememberChoice = false;
-  lastErrorAction = { type: "local", rememberChoice };
+  const exposeOnLocalNetwork = false;
+  const localNetworkCheckbox = document.getElementById("shareLocalNetwork");
+  if (localNetworkCheckbox) localNetworkCheckbox.checked = false;
+  lastErrorAction = { type: "local", rememberChoice, exposeOnLocalNetwork };
   resetLocalBoot();
   showView("local-boot");
-  await launcher.connectLocal({ rememberChoice });
+  await launcher.connectLocal({ rememberChoice, exposeOnLocalNetwork });
 }
 
 async function closeLauncherSheet() {
@@ -1943,6 +1982,7 @@ function applySnapshot(nextSnapshot) {
   document.getElementById("rememberLocal").checked =
     !nextSnapshot.state.alwaysShowChooser && nextSnapshot.state.autoConnectLastProfile
     && nextSnapshot.state.chooserMode !== "remote_existing";
+  document.getElementById("shareLocalNetwork").checked = !!nextSnapshot.state.localNetworkEnabled;
   renderConnections();
   renderTabRemoteList();
   updateWindowClose(activeView || nextSnapshot.initialView || "chooser");

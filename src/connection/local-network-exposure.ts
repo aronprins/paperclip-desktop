@@ -1,0 +1,148 @@
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+export const LOCAL_NETWORK_AUTH_SECRET_FILE_NAME = "paperclip-lan-auth-secret";
+
+export interface LocalNetworkExposureConfig {
+  env: Record<string, string>;
+  primaryUrl: string;
+  allowedHostnames: string[];
+  addresses: string[];
+}
+
+type NetworkInterfaceMap = ReturnType<typeof os.networkInterfaces>;
+
+export function listLocalNetworkIpv4Addresses(
+  interfaces: NetworkInterfaceMap = os.networkInterfaces(),
+): string[] {
+  const addresses: string[] = [];
+
+  for (const entries of Object.values(interfaces)) {
+    if (!entries) continue;
+
+    for (const entry of entries) {
+      if (entry.internal || entry.family !== "IPv4" || !isUsableIpv4Address(entry.address)) {
+        continue;
+      }
+      addresses.push(entry.address);
+    }
+  }
+
+  return Array.from(new Set(addresses));
+}
+
+export function readOrCreateLocalNetworkAuthSecret(userDataPath: string): string {
+  const secretPath = path.join(userDataPath, LOCAL_NETWORK_AUTH_SECRET_FILE_NAME);
+  try {
+    const existing = fs.readFileSync(secretPath, "utf8").trim();
+    if (existing) {
+      return existing;
+    }
+  } catch {
+    // create below
+  }
+
+  const secret = randomBytes(32).toString("base64url");
+  fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+  fs.writeFileSync(secretPath, `${secret}\n`, { encoding: "utf8", mode: 0o600 });
+  try {
+    fs.chmodSync(secretPath, 0o600);
+  } catch {
+    // best effort on platforms that do not support chmod
+  }
+  return secret;
+}
+
+export function buildLocalNetworkExposureConfig(input: {
+  port: number;
+  authSecret: string;
+  baseEnv?: NodeJS.ProcessEnv;
+  hostname?: string;
+  interfaces?: NetworkInterfaceMap;
+}): LocalNetworkExposureConfig {
+  const baseEnv = input.baseEnv ?? process.env;
+  const addresses = listLocalNetworkIpv4Addresses(input.interfaces);
+  if (addresses.length === 0) {
+    throw new Error("No active IPv4 local network address was found.");
+  }
+
+  const hostname = normalizeHostname(input.hostname ?? os.hostname());
+  const existingAllowedHostnames = parseCsv(baseEnv.PAPERCLIP_ALLOWED_HOSTNAMES);
+  const allowedHostnames = uniqueStrings([
+    ...existingAllowedHostnames,
+    ...addresses,
+    ...(hostname && !isLoopbackHostname(hostname) ? [hostname] : []),
+    "localhost",
+    "127.0.0.1",
+  ]);
+
+  const fallbackPublicBaseUrl = `http://${addresses[0]}:${input.port}`;
+  const authPublicBaseUrl = firstNonEmpty([
+    baseEnv.PAPERCLIP_AUTH_PUBLIC_BASE_URL,
+    baseEnv.BETTER_AUTH_URL,
+    baseEnv.BETTER_AUTH_BASE_URL,
+    baseEnv.PAPERCLIP_PUBLIC_URL,
+  ]) ?? fallbackPublicBaseUrl;
+  const authSecret = firstNonEmpty([
+    baseEnv.BETTER_AUTH_SECRET,
+    baseEnv.PAPERCLIP_AGENT_JWT_SECRET,
+    input.authSecret,
+  ]);
+
+  if (!authSecret) {
+    throw new Error("Local network mode requires an auth secret.");
+  }
+
+  return {
+    primaryUrl: authPublicBaseUrl,
+    addresses,
+    allowedHostnames,
+    env: {
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated",
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
+      PAPERCLIP_BIND: "lan",
+      PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
+      PAPERCLIP_AUTH_PUBLIC_BASE_URL: authPublicBaseUrl,
+      BETTER_AUTH_SECRET: authSecret,
+    },
+  };
+}
+
+function isUsableIpv4Address(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  return (
+    a !== 0 &&
+    a !== 127 &&
+    !(a === 169 && b === 254)
+  );
+}
+
+function parseCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map(normalizeHostname)
+    .filter(Boolean);
+}
+
+function normalizeHostname(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function isLoopbackHostname(value: string): boolean {
+  return value === "localhost" || value === "127.0.0.1" || value === "::1";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function firstNonEmpty(values: Array<string | undefined>): string | undefined {
+  return values.map((value) => value?.trim()).find((value): value is string => !!value);
+}

@@ -26,6 +26,10 @@ import {
   shouldStopAttemptedServer,
 } from "./connection/local-server-lifecycle";
 import { probeLocalServerHealth } from "./connection/local-server-health";
+import {
+  buildLocalNetworkExposureConfig,
+  readOrCreateLocalNetworkAuthSecret,
+} from "./connection/local-network-exposure";
 import { preflightRemoteConnection } from "./connection/preflight";
 import { ConnectionStore, getConnectionsFilePath } from "./connection/profiles";
 import { normalizeRemoteUrl } from "./connection/validate";
@@ -79,6 +83,8 @@ let currentConnection: {
   startUrl: string;
   allowedOrigin: string;
   partition: string;
+  localNetworkEnabled?: boolean;
+  localNetworkUrl?: string;
 } | null = null;
 
 let connectionStore: ConnectionStore;
@@ -92,6 +98,10 @@ type LauncherView =
   | "error";
 type LauncherPresentation = "standalone" | "attached";
 type BootStep = "init" | "database" | "server" | "ready";
+interface LocalServerLaunch {
+  process: ChildProcess;
+  localNetworkUrl?: string;
+}
 
 app.setName("Paperclip");
 applyDesktopUserDataOverride(app, process.env);
@@ -322,23 +332,37 @@ function resolvePaperclipHome(): string {
   });
 }
 
-function startServer(port: number): ChildProcess {
+function startServer(port: number, options: { exposeOnLocalNetwork?: boolean } = {}): LocalServerLaunch {
   const root = getAppRoot();
   const isWindows = process.platform === "win32";
   const enrichedPath = resolveShellPath();
   const paperclipHome = resolvePaperclipHome();
   console.log(`Using PAPERCLIP_HOME: ${paperclipHome}`);
+  const localNetworkExposure = options.exposeOnLocalNetwork
+    ? buildLocalNetworkExposureConfig({
+        port,
+        authSecret: readOrCreateLocalNetworkAuthSecret(app.getPath("userData")),
+        baseEnv: process.env,
+      })
+    : null;
+  if (localNetworkExposure) {
+    console.log(`Local network access enabled at ${localNetworkExposure.primaryUrl}`);
+  }
+  const commonEnv = {
+    ...process.env,
+    PATH: enrichedPath,
+    PORT: String(port),
+    PAPERCLIP_HOME: paperclipHome,
+    PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
+    ...(localNetworkExposure?.env ?? {}),
+  };
 
   const child = app.isPackaged
     ? spawn(findNodeBinary(), [path.join(root, "server", "dist", "index.js")], {
         cwd: root,
         env: {
-          ...process.env,
-          PATH: enrichedPath,
+          ...commonEnv,
           NODE_ENV: "production",
-          PORT: String(port),
-          PAPERCLIP_HOME: paperclipHome,
-          PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         },
         stdio: ["ignore", "pipe", "pipe"],
         detached: !isWindows,
@@ -346,12 +370,8 @@ function startServer(port: number): ChildProcess {
     : spawn("node", [path.join(root, "node_modules", "@paperclipai", "server", "dist", "index.js")], {
         cwd: root,
         env: {
-          ...process.env,
-          PATH: enrichedPath,
+          ...commonEnv,
           NODE_ENV: "development",
-          PORT: String(port),
-          PAPERCLIP_HOME: paperclipHome,
-          PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         },
         stdio: ["ignore", "pipe", "pipe"],
         detached: !isWindows,
@@ -363,7 +383,10 @@ function startServer(port: number): ChildProcess {
 
   child.stdout?.on("data", (chunk: Buffer) => process.stdout.write(chunk));
   child.stderr?.on("data", (chunk: Buffer) => process.stderr.write(chunk));
-  return child;
+  return {
+    process: child,
+    localNetworkUrl: localNetworkExposure?.primaryUrl,
+  };
 }
 
 function killServer(): Promise<void> {
@@ -481,8 +504,9 @@ async function promptToRecoverLocalServer(input: {
       : await dialog.showMessageBox(messageBoxOptions);
 
     if (response === 0) {
+      const exposeOnLocalNetwork = currentConnection?.localNetworkEnabled === true;
       await ensureLauncherWindow("local-boot");
-      void bootLocal({ forceRestart: true });
+      void bootLocal({ forceRestart: true, exposeOnLocalNetwork });
       return;
     }
 
@@ -719,7 +743,7 @@ function describeCurrentConnection(): string | null {
   }
 
   if (currentConnection.mode === "local_embedded") {
-    return "Return to Local";
+    return currentConnection.localNetworkEnabled ? "Return to Local Network" : "Return to Local";
   }
 
   const profile = currentConnection.profileId
@@ -896,12 +920,21 @@ async function bootLocal(options: {
   rememberChoiceExplicit?: boolean;
   rememberChoice?: boolean;
   forceRestart?: boolean;
+  exposeOnLocalNetwork?: boolean;
 } = {}): Promise<void> {
   const bootId = ++bootSequence;
+  const exposeOnLocalNetwork = options.exposeOnLocalNetwork === true;
   stopLocalServerMonitor();
 
-  if (!options.forceRestart && currentConnection?.mode === "local_embedded" && mainWindow && !mainWindow.isDestroyed()) {
+  if (
+    !options.forceRestart
+    && currentConnection?.mode === "local_embedded"
+    && (currentConnection.localNetworkEnabled === true) === exposeOnLocalNetwork
+    && mainWindow
+    && !mainWindow.isDestroyed()
+  ) {
     connectionStore.recordConnectionResult(LOCAL_PROFILE_ID);
+    connectionStore.setLocalNetworkEnabled(exposeOnLocalNetwork);
     if (options.rememberChoiceExplicit) {
       connectionStore.setRememberedProfile(
         LOCAL_PROFILE_ID,
@@ -928,7 +961,8 @@ async function bootLocal(options: {
     }
 
     sendBootStatus("database", "Launching embedded PostgreSQL...", 15);
-    nextServerProcess = startServer(serverPort);
+    const launch = startServer(serverPort, { exposeOnLocalNetwork });
+    nextServerProcess = launch.process;
     trackServerProcess(nextServerProcess);
 
     const logFile = path.join(app.getPath("userData"), "server.log");
@@ -1015,7 +1049,11 @@ async function bootLocal(options: {
       return;
     }
 
-    sendBootStatus("server", "Server is ready", 70);
+    sendBootStatus(
+      "server",
+      launch.localNetworkUrl ? `Server is ready at ${launch.localNetworkUrl}` : "Server is ready",
+      70,
+    );
     sendBootStatus("ready", "Loading the UI...", 80);
 
     const startUrl = `http://localhost:${serverPort}`;
@@ -1052,8 +1090,11 @@ async function bootLocal(options: {
       startUrl,
       allowedOrigin: new URL(startUrl).origin,
       partition: localPartition(),
+      localNetworkEnabled: exposeOnLocalNetwork,
+      localNetworkUrl: launch.localNetworkUrl,
     };
     connectionStore.recordConnectionResult(LOCAL_PROFILE_ID);
+    connectionStore.setLocalNetworkEnabled(exposeOnLocalNetwork);
     if (options.rememberChoiceExplicit) {
       connectionStore.setRememberedProfile(
         LOCAL_PROFILE_ID,
@@ -1222,7 +1263,10 @@ async function bootSavedProfile(
   options: { rememberChoiceExplicit?: boolean; rememberChoice?: boolean } = {},
 ): Promise<void> {
   if (profileId === LOCAL_PROFILE_ID) {
-    await bootLocal(options);
+    await bootLocal({
+      ...options,
+      exposeOnLocalNetwork: connectionStore.getSnapshot().state.localNetworkEnabled,
+    });
     return;
   }
 
@@ -1289,13 +1333,17 @@ function registerLauncherIpc(): void {
       localServerVersion: resolveLocalServerVersion(),
     }));
 
-  ipcMain.handle("launcher:connect-local", async (_event, payload: { rememberChoice: boolean }) => {
-    void bootLocal({
-      rememberChoiceExplicit: true,
-      rememberChoice: payload.rememberChoice,
-    });
-    return { started: true };
-  });
+  ipcMain.handle(
+    "launcher:connect-local",
+    async (_event, payload: { rememberChoice: boolean; exposeOnLocalNetwork?: boolean }) => {
+      void bootLocal({
+        rememberChoiceExplicit: true,
+        rememberChoice: payload.rememberChoice,
+        exposeOnLocalNetwork: payload.exposeOnLocalNetwork === true,
+      });
+      return { started: true };
+    },
+  );
 
   ipcMain.handle(
     "launcher:connect-remote",
@@ -1468,6 +1516,12 @@ function buildConnectionMenuItems(): MenuItemConstructorOptions[] {
       },
     },
     {
+      label: "Connect Local Network",
+      click: () => {
+        void ensureLauncherWindow("local-boot").then(() => bootLocal({ exposeOnLocalNetwork: true }));
+      },
+    },
+    {
       label: "Manage Connections",
       click: () => {
         void ensureLauncherWindow("saved");
@@ -1544,7 +1598,9 @@ app.whenReady().then(async () => {
   if (startupProfileId) {
     if (startupProfileId === LOCAL_PROFILE_ID) {
       await ensureLauncherWindow("local-boot");
-      void bootLocal();
+      void bootLocal({
+        exposeOnLocalNetwork: connectionStore.getSnapshot().state.localNetworkEnabled,
+      });
       return;
     }
 
