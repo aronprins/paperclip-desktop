@@ -39,7 +39,11 @@ test("local network exposure config enables authenticated LAN mode", () => {
   assert.equal(config.env.PAPERCLIP_DEPLOYMENT_EXPOSURE, "private");
   assert.equal(config.env.PAPERCLIP_BIND, "lan");
   assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret-with-enough-entropy");
+  assert.equal(config.env.PAPERCLIP_AUTH_BASE_URL_MODE, "explicit");
   assert.equal(config.env.PAPERCLIP_PUBLIC_URL, "http://192.168.1.23:3100");
+  assert.equal(config.env.BETTER_AUTH_URL, "http://192.168.1.23:3100");
+  assert.equal(config.env.BETTER_AUTH_BASE_URL, "http://192.168.1.23:3100");
+  assert.equal(config.env.BETTER_AUTH_TRUSTED_ORIGINS, "");
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /192\.168\.1\.23/);
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip-host\.local/);
   assert.match(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /localhost/);
@@ -61,8 +65,10 @@ test("local network exposure excludes public-looking hostnames from allow-list",
 test("local network exposure ignores ambient public URL and host allow-list env", () => {
   const previousPublicUrl = process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL;
   const previousAllowedHostnames = process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
+  const previousTrustedOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
   process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL = "https://paperclip.example.com";
   process.env.PAPERCLIP_ALLOWED_HOSTNAMES = "paperclip.example.com";
+  process.env.BETTER_AUTH_TRUSTED_ORIGINS = "https://paperclip.example.com";
 
   try {
     const config = buildLocalNetworkExposureConfig({
@@ -76,6 +82,7 @@ test("local network exposure ignores ambient public URL and host allow-list env"
     assert.equal(config.primaryUrl, "http://10.0.0.15:3100");
     assert.equal(config.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL, "http://10.0.0.15:3100");
     assert.equal(config.env.BETTER_AUTH_SECRET, "generated-secret-with-enough-entropy");
+    assert.equal(config.env.BETTER_AUTH_TRUSTED_ORIGINS, "");
     assert.doesNotMatch(config.env.PAPERCLIP_ALLOWED_HOSTNAMES, /paperclip\.example\.com/);
   } finally {
     if (previousPublicUrl === undefined) {
@@ -87,6 +94,11 @@ test("local network exposure ignores ambient public URL and host allow-list env"
       delete process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
     } else {
       process.env.PAPERCLIP_ALLOWED_HOSTNAMES = previousAllowedHostnames;
+    }
+    if (previousTrustedOrigins === undefined) {
+      delete process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+    } else {
+      process.env.BETTER_AUTH_TRUSTED_ORIGINS = previousTrustedOrigins;
     }
   }
 });

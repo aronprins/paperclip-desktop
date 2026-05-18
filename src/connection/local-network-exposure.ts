@@ -87,9 +87,13 @@ export function buildLocalNetworkExposureConfig(input: {
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
       PAPERCLIP_BIND: "lan",
       PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
+      PAPERCLIP_AUTH_BASE_URL_MODE: "explicit",
       PAPERCLIP_AUTH_PUBLIC_BASE_URL: authPublicBaseUrl,
       PAPERCLIP_PUBLIC_URL: authPublicBaseUrl,
+      BETTER_AUTH_URL: authPublicBaseUrl,
+      BETTER_AUTH_BASE_URL: authPublicBaseUrl,
       BETTER_AUTH_SECRET: authSecret,
+      BETTER_AUTH_TRUSTED_ORIGINS: "",
     },
   };
 }
