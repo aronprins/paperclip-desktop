@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -1516,6 +1517,12 @@ function rebuildAppMenu(): void {
 function buildConnectionMenuItems(): MenuItemConstructorOptions[] {
   const snapshot = connectionStore.getSnapshot();
   const recentProfiles = connectionStore.getRecentRemoteProfiles(5);
+  const activeLocalNetworkUrl =
+    currentConnection?.mode === "local_embedded"
+    && currentConnection.localNetworkEnabled === true
+    && currentConnection.localNetworkUrl
+      ? currentConnection.localNetworkUrl
+      : null;
 
   const items: MenuItemConstructorOptions[] = [
     {
@@ -1552,6 +1559,28 @@ function buildConnectionMenuItems(): MenuItemConstructorOptions[] {
       },
     },
   ];
+
+  if (activeLocalNetworkUrl) {
+    items.push({ type: "separator" });
+    items.push(
+      {
+        label: `Local Network URL: ${activeLocalNetworkUrl}`,
+        enabled: false,
+      },
+      {
+        label: "Copy Local Network URL",
+        click: () => {
+          clipboard.writeText(activeLocalNetworkUrl);
+        },
+      },
+      {
+        label: "Open Local Network URL",
+        click: () => {
+          void shell.openExternal(activeLocalNetworkUrl);
+        },
+      },
+    );
+  }
 
   if (recentProfiles.length > 0) {
     items.push({ type: "separator" });
