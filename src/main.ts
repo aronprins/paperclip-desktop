@@ -14,7 +14,6 @@ import {
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import treeKill from "tree-kill";
 import { checkForUpdatesFromMenu, initAutoUpdater } from "./updater";
@@ -34,8 +33,7 @@ import {
   readOrCreateLocalNetworkAuthSecret,
 } from "./connection/local-network-exposure";
 import {
-  bindHostForLocalExposure,
-  findFreePortForHost,
+  findFreePortForLocalExposure,
 } from "./connection/local-port-selection";
 import { preflightRemoteConnection } from "./connection/preflight";
 import { ConnectionStore, getConnectionsFilePath } from "./connection/profiles";
@@ -160,27 +158,53 @@ function ensureLauncherHtmlFile(): string {
 // Port detection and server lifecycle
 // ---------------------------------------------------------------------------
 
-function waitForPort(port: number, timeoutMs: number): Promise<void> {
+function waitWithTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function waitForLocalServerHealth(origin: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
+    let lastDetail = "Local server health check did not complete.";
 
-    const tryConnect = () => {
-      if (Date.now() > deadline) {
-        reject(new Error(`Server did not start within ${timeoutMs}ms`));
+    const poll = async () => {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        reject(new Error(`Local server did not become healthy within ${timeoutMs}ms. ${lastDetail}`));
         return;
       }
 
-      const sock = net.createConnection({ port, host: "127.0.0.1" }, () => {
-        sock.destroy();
+      const result = await probeLocalServerHealth({
+        origin,
+        timeoutMs: Math.min(LOCAL_SERVER_HEALTH_TIMEOUT_MS, Math.max(1_000, remainingMs)),
+      });
+      if (result.ok) {
         resolve();
-      });
+        return;
+      }
 
-      sock.on("error", () => {
-        setTimeout(tryConnect, POLL_INTERVAL_MS);
-      });
+      lastDetail = result.detail ?? "Local server health check failed.";
+      setTimeout(() => {
+        void poll();
+      }, POLL_INTERVAL_MS);
     };
 
-    tryConnect();
+    void poll();
   });
 }
 
@@ -946,7 +970,7 @@ async function bootLocal(options: {
   try {
     sendBootStatus("init", "Preparing environment...", 5);
 
-    serverPort = await findFreePortForHost(PREFERRED_PORT, bindHostForLocalExposure(exposeOnLocalNetwork));
+    serverPort = await findFreePortForLocalExposure(PREFERRED_PORT, exposeOnLocalNetwork);
     if (bootId !== bootSequence) {
       return;
     }
@@ -964,6 +988,12 @@ async function bootLocal(options: {
     const launch = startServer(serverPort, { exposeOnLocalNetwork });
     nextServerProcess = launch.process;
     trackServerProcess(nextServerProcess);
+    let resolveServerListening: (() => void) | null = null;
+    let rejectServerListening: ((error: Error) => void) | null = null;
+    const serverListeningPromise = new Promise<void>((resolve, reject) => {
+      resolveServerListening = resolve;
+      rejectServerListening = reject;
+    });
 
     const logFile = path.join(app.getPath("userData"), "server.log");
     const logStream = fs.createWriteStream(logFile, { flags: "a" });
@@ -997,6 +1027,9 @@ async function bootLocal(options: {
 
       if (!serverListening && text.includes("Server listening on")) {
         serverListening = true;
+        resolveServerListening?.();
+        resolveServerListening = null;
+        rejectServerListening = null;
         updateProgress("server", "Server is starting...", 55);
       }
     };
@@ -1014,6 +1047,11 @@ async function bootLocal(options: {
       stopLocalServerMonitor();
       const tail = serverOutputLines.slice(-30).join("\n");
       console.error(`Server exited unexpectedly (code=${code}, signal=${signal})\n${tail}`);
+      if (!serverListening) {
+        rejectServerListening?.(new Error(`Server exited before listening (code=${code}, signal=${signal}).\n${tail}`));
+        resolveServerListening = null;
+        rejectServerListening = null;
+      }
       void promptToRecoverLocalServer({
         message: "The embedded Paperclip server stopped unexpectedly.",
         detail: `Exit code: ${code}, signal: ${signal}\n\nLog: ${logFile}\n\n${tail}`,
@@ -1034,8 +1072,17 @@ async function bootLocal(options: {
     }, 2_000);
 
     updateProgress("server", "Waiting for server...", 45);
-    await waitForPort(serverPort, SERVER_STARTUP_TIMEOUT_MS);
-    clearInterval(progressInterval);
+    const startUrl = `http://localhost:${serverPort}`;
+    try {
+      await waitWithTimeout(
+        serverListeningPromise,
+        SERVER_STARTUP_TIMEOUT_MS,
+        `Server did not report listening within ${SERVER_STARTUP_TIMEOUT_MS}ms`,
+      );
+      await waitForLocalServerHealth(new URL(startUrl).origin, SERVER_STARTUP_TIMEOUT_MS);
+    } finally {
+      clearInterval(progressInterval);
+    }
 
     if (bootId !== bootSequence) {
       if (shouldStopAttemptedServer(nextServerProcess, serverProcess)) {
@@ -1056,7 +1103,6 @@ async function bootLocal(options: {
     );
     sendBootStatus("ready", "Loading the UI...", 80);
 
-    const startUrl = `http://localhost:${serverPort}`;
     const window = createMainWindow({
       mode: "local_embedded",
       startUrl,
