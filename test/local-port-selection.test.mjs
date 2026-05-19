@@ -16,7 +16,7 @@ const {
 test("local port selection maps exposure mode to the bind host", () => {
   assert.equal(bindHostForLocalExposure(false), "127.0.0.1");
   assert.equal(bindHostForLocalExposure(true), "0.0.0.0");
-  assert.deepEqual(bindHostsForLocalExposure(false), ["127.0.0.1"]);
+  assert.deepEqual(bindHostsForLocalExposure(false), ["127.0.0.1", "0.0.0.0"]);
   assert.deepEqual(bindHostsForLocalExposure(true), ["0.0.0.0", "127.0.0.1"]);
 });
 
@@ -45,6 +45,18 @@ test("local network port selection skips ports occupied on localhost", async () 
     assert.equal(await isPortAvailableForLocalExposure(occupied.port, true), false);
 
     const selected = await findFreePortForLocalExposure(occupied.port, true, 2);
+    assert.equal(selected, occupied.port + 1);
+  } finally {
+    await closeServer(occupied.server);
+  }
+});
+
+test("private local port selection skips ports occupied on all interfaces", async () => {
+  const occupied = await listenOnRandomPort("0.0.0.0");
+  try {
+    assert.equal(await isPortAvailableForLocalExposure(occupied.port, false), false);
+
+    const selected = await findFreePortForLocalExposure(occupied.port, false, 2);
     assert.equal(selected, occupied.port + 1);
   } finally {
     await closeServer(occupied.server);

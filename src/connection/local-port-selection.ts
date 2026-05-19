@@ -7,7 +7,7 @@ export function bindHostForLocalExposure(exposeOnLocalNetwork: boolean): LocalSe
 }
 
 export function bindHostsForLocalExposure(exposeOnLocalNetwork: boolean): LocalServerBindHost[] {
-  return exposeOnLocalNetwork ? ["0.0.0.0", "127.0.0.1"] : ["127.0.0.1"];
+  return exposeOnLocalNetwork ? ["0.0.0.0", "127.0.0.1"] : ["127.0.0.1", "0.0.0.0"];
 }
 
 export function isPortAvailableForHost(port: number, host: LocalServerBindHost): Promise<boolean> {

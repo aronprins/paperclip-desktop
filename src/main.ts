@@ -343,7 +343,10 @@ function resolvePaperclipHome(): string {
   });
 }
 
-function startServer(port: number, options: { exposeOnLocalNetwork?: boolean } = {}): LocalServerLaunch {
+function startServer(port: number, options: {
+  exposeOnLocalNetwork?: boolean;
+  onOutput?: (chunk: Buffer) => void;
+} = {}): LocalServerLaunch {
   const root = getAppRoot();
   const isWindows = process.platform === "win32";
   const enrichedPath = resolveShellPath();
@@ -391,8 +394,14 @@ function startServer(port: number, options: { exposeOnLocalNetwork?: boolean } =
     writePidFile(child.pid);
   }
 
-  child.stdout?.on("data", (chunk: Buffer) => process.stdout.write(chunk));
-  child.stderr?.on("data", (chunk: Buffer) => process.stderr.write(chunk));
+  child.stdout?.on("data", (chunk: Buffer) => {
+    process.stdout.write(chunk);
+    options.onOutput?.(chunk);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    process.stderr.write(chunk);
+    options.onOutput?.(chunk);
+  });
   return {
     process: child,
     localNetworkUrl: localNetworkExposure?.primaryUrl,
@@ -985,9 +994,6 @@ async function bootLocal(options: {
       previousServerProcess = null;
     }
 
-    const launch = startServer(serverPort, { exposeOnLocalNetwork });
-    nextServerProcess = launch.process;
-    trackServerProcess(nextServerProcess);
     let resolveServerListening: (() => void) | null = null;
     let rejectServerListening: ((error: Error) => void) | null = null;
     const serverListeningPromise = new Promise<void>((resolve, reject) => {
@@ -1034,8 +1040,9 @@ async function bootLocal(options: {
       }
     };
 
-    nextServerProcess.stdout?.on("data", onServerData);
-    nextServerProcess.stderr?.on("data", onServerData);
+    const launch = startServer(serverPort, { exposeOnLocalNetwork, onOutput: onServerData });
+    nextServerProcess = launch.process;
+    trackServerProcess(nextServerProcess);
 
     nextServerProcess.on("exit", (code, signal) => {
       logStream.end();
