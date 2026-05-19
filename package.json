@@ -18,7 +18,7 @@
     "publish-release-assets:mac": "node scripts/publish-macos-release-assets.mjs",
     "smoke:mac:packaged": "node scripts/smoke-test-packaged-macos.mjs",
     "smoke:mac:packaged:lan": "node scripts/smoke-test-packaged-macos.mjs --local-network",
-    "test:connections": "pnpm build && node --test test/connection-validate.test.mjs test/connection-preflight.test.mjs test/connection-profiles.test.mjs test/window-policy.test.mjs test/navigation-gestures.test.mjs test/local-server-lifecycle.test.mjs test/local-server-health.test.mjs test/local-network-exposure.test.mjs",
+    "test:connections": "pnpm build && node --test test/connection-validate.test.mjs test/connection-preflight.test.mjs test/connection-profiles.test.mjs test/window-policy.test.mjs test/navigation-gestures.test.mjs test/local-server-lifecycle.test.mjs test/local-server-health.test.mjs test/local-network-exposure.test.mjs test/local-port-selection.test.mjs",
     "test:prepare-release-assets:mac": "node --test test/prepare-macos-release-assets.test.mjs",
     "test:release-safety": "pnpm build && node --test test/runtime-safety.test.mjs test/prepare-macos-release-assets.test.mjs",
     "release:mac:local": "node scripts/release-macos-local.mjs",
@@ -45,13 +45,22 @@
   "pnpm": {
     "overrides": {
       "@xmldom/xmldom": "0.8.13",
+      "@anthropic-ai/sdk": "0.91.1",
+      "@tootallnate/once": "3.0.1",
+      "better-auth": "1.6.2",
       "brace-expansion@1.1.12": "1.1.13",
       "brace-expansion@2.0.2": "2.0.3",
+      "brace-expansion@5.0.5": "5.0.6",
       "defu": "6.1.7",
       "dompurify": "3.4.2",
       "fast-xml-parser": "5.7.3",
+      "fast-uri": "3.1.2",
+      "kysely": "0.28.17",
       "lodash": "4.18.1",
-      "path-to-regexp": "8.4.2"
+      "path-to-regexp": "8.4.2",
+      "tar": "7.5.14",
+      "undici@5.29.0": "6.24.0",
+      "ws": "8.20.1"
     }
   }
 }

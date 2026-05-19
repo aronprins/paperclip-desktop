@@ -33,6 +33,10 @@ import {
   buildLocalNetworkExposureConfig,
   readOrCreateLocalNetworkAuthSecret,
 } from "./connection/local-network-exposure";
+import {
+  bindHostForLocalExposure,
+  findFreePortForHost,
+} from "./connection/local-port-selection";
 import { preflightRemoteConnection } from "./connection/preflight";
 import { ConnectionStore, getConnectionsFilePath } from "./connection/profiles";
 import { normalizeRemoteUrl } from "./connection/validate";
@@ -155,26 +159,6 @@ function ensureLauncherHtmlFile(): string {
 // ---------------------------------------------------------------------------
 // Port detection and server lifecycle
 // ---------------------------------------------------------------------------
-
-function isPortInUse(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sock = net.createConnection({ port, host: "127.0.0.1" }, () => {
-      sock.destroy();
-      resolve(true);
-    });
-    sock.on("error", () => resolve(false));
-  });
-}
-
-async function findFreePort(startPort: number): Promise<number> {
-  for (let port = startPort; port < startPort + 100; port += 1) {
-    if (!(await isPortInUse(port))) {
-      return port;
-    }
-  }
-
-  throw new Error(`No free port found in range ${startPort}-${startPort + 99}`);
-}
 
 function waitForPort(port: number, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -962,7 +946,7 @@ async function bootLocal(options: {
   try {
     sendBootStatus("init", "Preparing environment...", 5);
 
-    serverPort = await findFreePort(PREFERRED_PORT);
+    serverPort = await findFreePortForHost(PREFERRED_PORT, bindHostForLocalExposure(exposeOnLocalNetwork));
     if (bootId !== bootSequence) {
       return;
     }
