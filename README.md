@@ -35,6 +35,8 @@ Under the hood, the app can either:
 
 When local mode is active, the server is cleanly shut down when you quit the app.
 
+Local mode can also be shared on the local network from the launcher. In that mode Desktop still owns the embedded server lifecycle, but starts upstream Paperclip in authenticated LAN mode, binds it to local network interfaces, and shows a LAN URL such as `http://192.168.1.23:3100`. Other devices on the same trusted network can open that URL and sign in through Paperclip's normal auth flow; the host firewall may still need to allow incoming connections.
+
 > For everything Paperclip itself can do — orchestrating AI agents, running autonomous companies, governance, budgets, org charts, etc. — see the **[upstream Paperclip repo](https://github.com/paperclipai/paperclip)**. This project does not modify or extend Paperclip's functionality; it only packages it.
 
 <br/>

@@ -42,6 +42,7 @@ export interface ConnectionState {
   autoConnectLastProfile: boolean;
   chooserMode: ConnectionMode;
   localProfileName: string;
+  localNetworkEnabled: boolean;
   localLastConnectedAt?: string;
   localLastHealth?: ConnectionHealth;
 }

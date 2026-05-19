@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld("paperclipLauncher", {
   duplicateProfile: (profileId: string) => ipcRenderer.invoke("launcher:duplicate-profile", profileId),
   deleteProfile: (profileId: string) => ipcRenderer.invoke("launcher:delete-profile", profileId),
   verifyRemote: (payload: { remoteUrl: string }) => ipcRenderer.invoke("launcher:verify-remote", payload),
-  connectLocal: (payload: { rememberChoice: boolean }) => ipcRenderer.invoke("launcher:connect-local", payload),
+  connectLocal: (payload: { rememberChoice: boolean; exposeOnLocalNetwork?: boolean }) =>
+    ipcRenderer.invoke("launcher:connect-local", payload),
   connectRemote: (payload: {
     profileId?: string;
     remoteUrl: string;

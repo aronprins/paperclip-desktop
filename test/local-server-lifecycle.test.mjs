@@ -8,6 +8,7 @@ const {
   shouldHandleTrackedServerExit,
   shouldKillSupersededServer,
   shouldRestorePreviousTrackedServer,
+  shouldStopPreviousLocalServerForExposureChange,
   shouldStopAttemptedServer,
 } = require("../dist/connection/local-server-lifecycle.js");
 
@@ -38,4 +39,27 @@ test("local server lifecycle restores the previous process after a failed replac
   assert.equal(shouldStopAttemptedServer(attempted, attempted), true);
   assert.equal(shouldRestorePreviousTrackedServer(previous, attempted, attempted), true);
   assert.equal(shouldRestorePreviousTrackedServer(null, attempted, attempted), false);
+});
+
+test("local server lifecycle stops previous server when local exposure changes", () => {
+  assert.equal(shouldStopPreviousLocalServerForExposureChange({
+    previousMode: "local_embedded",
+    currentExposeOnLocalNetwork: false,
+    nextExposeOnLocalNetwork: true,
+  }), true);
+  assert.equal(shouldStopPreviousLocalServerForExposureChange({
+    previousMode: "local_embedded",
+    currentExposeOnLocalNetwork: true,
+    nextExposeOnLocalNetwork: false,
+  }), true);
+  assert.equal(shouldStopPreviousLocalServerForExposureChange({
+    previousMode: "local_embedded",
+    currentExposeOnLocalNetwork: true,
+    nextExposeOnLocalNetwork: true,
+  }), false);
+  assert.equal(shouldStopPreviousLocalServerForExposureChange({
+    previousMode: "remote_existing",
+    currentExposeOnLocalNetwork: false,
+    nextExposeOnLocalNetwork: true,
+  }), false);
 });

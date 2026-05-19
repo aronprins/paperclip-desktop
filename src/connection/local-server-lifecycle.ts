@@ -47,3 +47,12 @@ export function shouldStopAttemptedServer(
 ): boolean {
   return isSameProcess(tracked, attempted);
 }
+
+export function shouldStopPreviousLocalServerForExposureChange(input: {
+  previousMode: string | null | undefined;
+  currentExposeOnLocalNetwork: boolean | null | undefined;
+  nextExposeOnLocalNetwork: boolean;
+}): boolean {
+  return input.previousMode === "local_embedded"
+    && (input.currentExposeOnLocalNetwork === true) !== input.nextExposeOnLocalNetwork;
+}

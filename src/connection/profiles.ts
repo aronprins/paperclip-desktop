@@ -27,6 +27,7 @@ export function createDefaultConnectionState(): ConnectionState {
     autoConnectLastProfile: false,
     chooserMode: "local_embedded",
     localProfileName: "Local",
+    localNetworkEnabled: false,
     localLastHealth: "healthy",
   };
 }
@@ -171,6 +172,11 @@ export class ConnectionStore {
     this.persist();
   }
 
+  setLocalNetworkEnabled(value: boolean): void {
+    this.cache.state.localNetworkEnabled = value;
+    this.persist();
+  }
+
   setRememberedProfile(profileId: string | null, rememberChoice: boolean): void {
     this.cache.state.activeProfileId = profileId;
     this.cache.state.autoConnectLastProfile = rememberChoice;
@@ -295,6 +301,7 @@ function sanitizeConnectionState(raw: unknown): ConnectionState {
       typeof raw.localProfileName === "string" && raw.localProfileName.trim().length > 0
         ? raw.localProfileName.trim()
         : "Local",
+    localNetworkEnabled: raw.localNetworkEnabled === true,
     localLastConnectedAt:
       typeof raw.localLastConnectedAt === "string" ? raw.localLastConnectedAt : undefined,
     localLastHealth: sanitizeHealth(raw.localLastHealth) ?? "healthy",
