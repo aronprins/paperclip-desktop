@@ -133,26 +133,69 @@ export function getLauncherHtml(): string {
     max-width: 300px;
   }
 
-  .local-network-panel {
-    width: 340px;
+  .local-options {
     margin-top: 18px;
-    padding: 12px;
-    border: 1px solid #27272a;
-    border-radius: 8px;
-    background: #111114;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
-  .local-network-panel .remember-row {
+  .local-options .remember-row {
+    margin-bottom: 10px;
+    justify-content: center;
+  }
+  .local-options .remember-row:last-child {
     margin: 0;
-    align-items: flex-start;
   }
-  .local-network-title {
+  .local-network-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .local-network-info {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #27272a;
+    color: #a1a1aa;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: help;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .local-network-info:hover,
+  .local-network-info:focus {
+    background: #3f3f46;
     color: #e4e4e7;
   }
-  .local-network-detail {
-    display: block;
-    margin-top: 4px;
-    color: #71717a;
-    line-height: 1.35;
+  .local-network-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 260px;
+    padding: 8px 10px;
+    background: #0a0a0b;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    color: #d4d4d8;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: left;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 10;
+    white-space: normal;
+  }
+  .local-network-info:hover .local-network-tooltip,
+  .local-network-info:focus .local-network-tooltip {
+    opacity: 1;
   }
 
   .remember-row {
@@ -882,15 +925,15 @@ export function getLauncherHtml(): string {
       <div class="local-hero-title">Run Local Server</div>
       <div class="local-hero-desc">Start the embedded Paperclip server on this machine with trusted local access.</div>
       <button class="btn primary" style="min-width:180px;" onclick="launchLocal()">Launch</button>
-      <div class="local-network-panel">
+      <div class="local-options">
         <div class="remember-row">
           <input type="checkbox" id="shareLocalNetwork">
-          <label for="shareLocalNetwork"><span class="local-network-title">Share on local network</span><span class="local-network-detail">Requires sign-in and allows devices on this network to reach Paperclip over HTTP.</span></label>
+          <label class="local-network-label" for="shareLocalNetwork">Share on local network <span class="local-network-info" tabindex="0" aria-label="Local network sharing details">?<span class="local-network-tooltip">Lets other devices on the same trusted network open this local Paperclip server over HTTP. Paperclip still runs in authenticated mode and your Mac may ask to allow incoming connections.</span></span></label>
         </div>
-      </div>
-      <div class="remember-row" style="margin-top:20px;margin-bottom:0;">
-        <input type="checkbox" id="rememberLocal">
-        <label for="rememberLocal">Always start local on launch</label>
+        <div class="remember-row">
+          <input type="checkbox" id="rememberLocal">
+          <label for="rememberLocal">Always start local on launch</label>
+        </div>
       </div>
     </div>
 
