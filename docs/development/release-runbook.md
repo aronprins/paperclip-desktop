@@ -160,6 +160,17 @@ Check the latest stable upstream server version:
 npm view @paperclipai/server version
 ```
 
+This is a release gate, not informational output.
+
+If the npm version is newer than the version currently pinned in
+`package.json`, stop and update the release to use the latest stable upstream
+version before building artifacts. For a normal stable release, that means
+bumping the desktop version, updating `devDependencies.@paperclipai/server`,
+running `pnpm install`, and rebuilding from that updated commit.
+
+Only ship an older upstream version intentionally, for example for a rollback or
+emergency hotfix, and call that out in the release notes/checklist.
+
 Set the desktop app version and the upstream Paperclip version:
 
 ```bash
