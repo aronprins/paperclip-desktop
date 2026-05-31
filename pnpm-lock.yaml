@@ -29,8 +29,8 @@ importers:
         version: 1.2.2
     devDependencies:
       '@paperclipai/server':
-        specifier: 2026.525.0
-        version: 2026.525.0(@noble/hashes@2.0.1)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7)
+        specifier: 2026.529.0
+        version: 2026.529.0(@noble/hashes@2.0.1)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7)
       electron:
         specifier: ^41.5.0
         version: 41.5.0
@@ -875,44 +875,44 @@ packages:
     engines: {node: '>=10'}
     deprecated: This functionality has been moved to @npmcli/fs
 
-  '@paperclipai/adapter-acpx-local@2026.525.0':
-    resolution: {integrity: sha512-Tr9oqeB5yc46w+bvgXgmJeeK7kpJdeySQmMhbCLd8R6AWXUz3y+Fg4YMcMuvPmxIohuUiPD0h0FxVKCF4Lbaow==}
+  '@paperclipai/adapter-acpx-local@2026.529.0':
+    resolution: {integrity: sha512-JCMVgmXLHViKTFzW+2RS9eqLG02G3se5Fc63p5TtjbWnIrCzN9VoPjhOHfSvMYEhOV1yHxRJcWEqWK7VRTpFnQ==}
 
-  '@paperclipai/adapter-claude-local@2026.525.0':
-    resolution: {integrity: sha512-kd99PFFbWKC5QpT/jke0LJnTVOu7JXUrRyLnwmCgjSmK6lOeR4lzMJfAi8uYkvAknV1Odc996VBdwZNliNjjTQ==}
+  '@paperclipai/adapter-claude-local@2026.529.0':
+    resolution: {integrity: sha512-zp4ZRndrz/C2k2Cn6WY3a7oqEpZx5NA1w+wF8Me4wVWZwyShzipkfPhfQA27ldycE9y4/+cN+ny8WJyzn0Pl/Q==}
 
-  '@paperclipai/adapter-codex-local@2026.525.0':
-    resolution: {integrity: sha512-AjXV/tEffwuqkoOmQXLS2q1JB8M2e/1F2kVNdUQzfSh+iUxwkCCz2W2seErXRdpCv0PKuEUpCySPcUMsr8pRdQ==}
+  '@paperclipai/adapter-codex-local@2026.529.0':
+    resolution: {integrity: sha512-4DGZaT/jKVZYanKevZYoWSR9HkPw2pa8EbvGlnS55d5f5u/Vcw9VSspD22zz9sND3cdqRnLY/mxznEt+m3T/Hg==}
 
-  '@paperclipai/adapter-cursor-cloud@2026.525.0':
-    resolution: {integrity: sha512-WKqjOn0XEW9aXE988SDA7Yo+cnk8fHAXWk70xOxEZkKdwLLuhX3/f/EpZLJSPRxa2YY1kyyv59oWszcXTeYe2g==}
+  '@paperclipai/adapter-cursor-cloud@2026.529.0':
+    resolution: {integrity: sha512-pfYkjZ+cCwufZ/RLhReHvuh9BjrKFkVmvWNdXlVySLUjuGSV+Gq5EThwu75xJsMrgwzJvThfg8ILyovKliN9Bw==}
 
-  '@paperclipai/adapter-cursor-local@2026.525.0':
-    resolution: {integrity: sha512-wvTnR9LM5MLVurSMwvT3i34GnSK1cXgBGj3ieZCdQHjPnG2LFDkVMTbaub0QCJ03oI/VcZc/WZGd+xiHj7ya7Q==}
+  '@paperclipai/adapter-cursor-local@2026.529.0':
+    resolution: {integrity: sha512-yzJYzM/gdKc/XVNgboOUVtpPRIkLyekgQRXPMfEv/6hA4BAAuaHPUbuHdPRNt3sV2eOyyfT4b0igG0+3f9uDXA==}
 
-  '@paperclipai/adapter-gemini-local@2026.525.0':
-    resolution: {integrity: sha512-F5RNSUZKULValSmgXZ8T0fk/x9lMEdpK6r/fVQXACi4FyjfpVf2PhXNGz9QY+f4bSZXyE+f7OT/ni8YwjHq7Jw==}
+  '@paperclipai/adapter-gemini-local@2026.529.0':
+    resolution: {integrity: sha512-dDskbRD77JjwcR4h7htJmpYOaNDh7sL/fAWuYeAG9fLE0fg8ntS/+Z/WqDQB7nnSicWXtNmufx4CjlRacA15Iw==}
 
-  '@paperclipai/adapter-grok-local@2026.525.0':
-    resolution: {integrity: sha512-7XJMfqwyMDUV2wB9VltgQEF0ieQyq4rhB+CPJ+SwMr4XDBPDmpp32ZXFrff32CGsLwhg+qxsa5sPmv2wd/C1Nw==}
+  '@paperclipai/adapter-grok-local@2026.529.0':
+    resolution: {integrity: sha512-aZu+bjt/U70eqNvtcXcCAf5nT/EveWsAp56CG2ytTVm5knPB+FBvkoJoqLAIs/yTUuSNCmO+RkWTgGlhmNdJ+Q==}
 
-  '@paperclipai/adapter-openclaw-gateway@2026.525.0':
-    resolution: {integrity: sha512-fRTthc1TPZKU5v034+UXoXk8fcuv3RfHByVo4nun6zCSV1/Jg+hlG2fwSw0kzbN7D3LBldB8wz8pvqOW7mGo8A==}
+  '@paperclipai/adapter-openclaw-gateway@2026.529.0':
+    resolution: {integrity: sha512-yM4YH1onuMD2iNktbjkBOkclLi1ULunBREhOgcsZb3kVl3uVKYpDmTs7sRczDtDHSn8Yd34BFgoG/efuHsyb9Q==}
 
-  '@paperclipai/adapter-opencode-local@2026.525.0':
-    resolution: {integrity: sha512-lnRy0N6DXlEbYT3PSL50y1rdm6jzAKuBWiB2iUlDJcu0Gk7kSc4TznoR4B0tw7Jy5BVQDKbvydD13fN0x/LFeQ==}
+  '@paperclipai/adapter-opencode-local@2026.529.0':
+    resolution: {integrity: sha512-CxpIKOhQRx5i5jQt1PjG0MmwA59tw57x7NSHTov5Gk8bbVkJVo4gVbkq2y1Y4CpNJMLnSJKnURnzEomHev3Kiw==}
 
-  '@paperclipai/adapter-pi-local@2026.525.0':
-    resolution: {integrity: sha512-XBMsj732tu+znH1kZqplmlGu7F8Kz/iVRgigBYoVQhUJWonTqYZV30LiuHhUvaEcT4ljmohr09e0psiBkHSEqQ==}
+  '@paperclipai/adapter-pi-local@2026.529.0':
+    resolution: {integrity: sha512-6F+T9NS+t0Ga1y82KwrRZXxcmzvnfowmbNv/jFqtroDRUji5OfQvhNXQ7knKhSfJDOwhEp7kMMHK0CTj6nxDgQ==}
 
-  '@paperclipai/adapter-utils@2026.525.0':
-    resolution: {integrity: sha512-R1hE67YbrvLAGzX7DbsTlp0tbRHgycaVvyUrQ36zJcCLGyC88fP0aSSp/VAs6R0zzDMTQYtIFYqtzcBp/mVXNA==}
+  '@paperclipai/adapter-utils@2026.529.0':
+    resolution: {integrity: sha512-Y8sbhZTHyb9nYYAURkGZ7oxFiU5ypew1fDuFB59qjRLt7FyIJXP6HbdEVRNylSV3jlXksCxokw2LqpwIID7asQ==}
 
-  '@paperclipai/db@2026.525.0':
-    resolution: {integrity: sha512-H6UqUkthgZSyYBEU2KEuQBvmVo7kbSwmwzyyyfj95i7XJGYMut5UHieaJ78PvpxaQAyE673hrgz1Z7A3dPLAlA==}
+  '@paperclipai/db@2026.529.0':
+    resolution: {integrity: sha512-u+JBfHb5txrlvacfVa8uJms7qNu92N/OdB+AlOPAY4S7IwBHGL7T4ct9xTp8gqhfPzp4iyauvkUztjkLsundRw==}
 
-  '@paperclipai/plugin-sdk@2026.525.0':
-    resolution: {integrity: sha512-7ivXbFSwH7cS+/2WNbPwQve5vVtLnqgxX5lmqTKn+i3fOY03d5KHaYF2bbI5zeTkAAwwEJ0Nz3rfBWNPguRRUw==}
+  '@paperclipai/plugin-sdk@2026.529.0':
+    resolution: {integrity: sha512-mYSs+gcIGPiF5RqtOjoMJp1NP0pxqS27ceRnkFeVhGgNFC/M5UIs+rpYdeUozGEZWfybwUlxnXbEX+yTWAMCLg==}
     hasBin: true
     peerDependencies:
       react: '>=18'
@@ -920,11 +920,11 @@ packages:
       react:
         optional: true
 
-  '@paperclipai/server@2026.525.0':
-    resolution: {integrity: sha512-h8+mMxM2vReu97nmYY6H2VUB6ZmY68SVBJ5P1uM8bd7Sa9ljyBgoWjO9jktaSvg6zE7G74ss84pf4hpbZ+9pHQ==}
+  '@paperclipai/server@2026.529.0':
+    resolution: {integrity: sha512-+mM7FszTGYJRaWpTh+OGAyjSXf5RVm1iq9jL+Q1CjOgQyzgH4WZ126LOMO5V/9uus4Tx/TggNgoNloBWvlJ/+A==}
 
-  '@paperclipai/shared@2026.525.0':
-    resolution: {integrity: sha512-fbVrEx96oxkxXbRBFDLAgW5Z0lRC7Ii+BeCNhKqKRCg9m2IwtP97CGoOeAROdRrvRpP8Neb3vgaaDbDjXT74lQ==}
+  '@paperclipai/shared@2026.529.0':
+    resolution: {integrity: sha512-KDHhBn88murStIQ6XZCnRj5exRQla3ycj5IihEIXd8cH0bNWqacD9a/Ofq5ONriaO1mzcMp3evrbDl/jLx5Zdg==}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -4431,10 +4431,10 @@ snapshots:
       rimraf: 3.0.2
     optional: true
 
-  '@paperclipai/adapter-acpx-local@2026.525.0':
+  '@paperclipai/adapter-acpx-local@2026.529.0':
     dependencies:
       '@agentclientprotocol/claude-agent-acp': 0.31.4
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       '@zed-industries/codex-acp': 0.12.0
       acpx: 0.6.1
       picocolors: 1.1.1
@@ -4445,64 +4445,64 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@paperclipai/adapter-claude-local@2026.525.0':
+  '@paperclipai/adapter-claude-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-codex-local@2026.525.0':
+  '@paperclipai/adapter-codex-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-cursor-cloud@2026.525.0':
+  '@paperclipai/adapter-cursor-cloud@2026.529.0':
     dependencies:
       '@cursor/sdk': 1.0.12
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
     transitivePeerDependencies:
       - bluebird
       - supports-color
 
-  '@paperclipai/adapter-cursor-local@2026.525.0':
+  '@paperclipai/adapter-cursor-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-gemini-local@2026.525.0':
+  '@paperclipai/adapter-gemini-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-grok-local@2026.525.0':
+  '@paperclipai/adapter-grok-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-openclaw-gateway@2026.525.0':
+  '@paperclipai/adapter-openclaw-gateway@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
       ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@paperclipai/adapter-opencode-local@2026.525.0':
+  '@paperclipai/adapter-opencode-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-pi-local@2026.525.0':
+  '@paperclipai/adapter-pi-local@2026.529.0':
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
-  '@paperclipai/adapter-utils@2026.525.0': {}
+  '@paperclipai/adapter-utils@2026.529.0': {}
 
-  '@paperclipai/db@2026.525.0(kysely@0.28.14)(pg@8.20.0)(sqlite3@5.1.7)':
+  '@paperclipai/db@2026.529.0(kysely@0.28.14)(pg@8.20.0)(sqlite3@5.1.7)':
     dependencies:
-      '@paperclipai/shared': 2026.525.0
+      '@paperclipai/shared': 2026.529.0
       drizzle-orm: 0.45.2(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7)
       embedded-postgres: 18.1.0-beta.16
       postgres: 3.4.8
@@ -4537,28 +4537,28 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@paperclipai/plugin-sdk@2026.525.0':
+  '@paperclipai/plugin-sdk@2026.529.0':
     dependencies:
-      '@paperclipai/shared': 2026.525.0
+      '@paperclipai/shared': 2026.529.0
       zod: 3.25.76
 
-  '@paperclipai/server@2026.525.0(@noble/hashes@2.0.1)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7)':
+  '@paperclipai/server@2026.529.0(@noble/hashes@2.0.1)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7)':
     dependencies:
       '@aws-sdk/client-s3': 3.1017.0
-      '@paperclipai/adapter-acpx-local': 2026.525.0
-      '@paperclipai/adapter-claude-local': 2026.525.0
-      '@paperclipai/adapter-codex-local': 2026.525.0
-      '@paperclipai/adapter-cursor-cloud': 2026.525.0
-      '@paperclipai/adapter-cursor-local': 2026.525.0
-      '@paperclipai/adapter-gemini-local': 2026.525.0
-      '@paperclipai/adapter-grok-local': 2026.525.0
-      '@paperclipai/adapter-openclaw-gateway': 2026.525.0
-      '@paperclipai/adapter-opencode-local': 2026.525.0
-      '@paperclipai/adapter-pi-local': 2026.525.0
-      '@paperclipai/adapter-utils': 2026.525.0
-      '@paperclipai/db': 2026.525.0(kysely@0.28.14)(pg@8.20.0)(sqlite3@5.1.7)
-      '@paperclipai/plugin-sdk': 2026.525.0
-      '@paperclipai/shared': 2026.525.0
+      '@paperclipai/adapter-acpx-local': 2026.529.0
+      '@paperclipai/adapter-claude-local': 2026.529.0
+      '@paperclipai/adapter-codex-local': 2026.529.0
+      '@paperclipai/adapter-cursor-cloud': 2026.529.0
+      '@paperclipai/adapter-cursor-local': 2026.529.0
+      '@paperclipai/adapter-gemini-local': 2026.529.0
+      '@paperclipai/adapter-grok-local': 2026.529.0
+      '@paperclipai/adapter-openclaw-gateway': 2026.529.0
+      '@paperclipai/adapter-opencode-local': 2026.529.0
+      '@paperclipai/adapter-pi-local': 2026.529.0
+      '@paperclipai/adapter-utils': 2026.529.0
+      '@paperclipai/db': 2026.529.0(kysely@0.28.14)(pg@8.20.0)(sqlite3@5.1.7)
+      '@paperclipai/plugin-sdk': 2026.529.0
+      '@paperclipai/shared': 2026.529.0
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       better-auth: 1.4.18(drizzle-orm@0.45.2(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8)(sqlite3@5.1.7))(pg@8.20.0)
@@ -4635,7 +4635,7 @@ snapshots:
       - vitest
       - vue
 
-  '@paperclipai/shared@2026.525.0':
+  '@paperclipai/shared@2026.529.0':
     dependencies:
       zod: 3.25.76
 
@@ -6127,7 +6127,7 @@ snapshots:
 
   hermes-paperclip-adapter@0.2.1:
     dependencies:
-      '@paperclipai/adapter-utils': 2026.525.0
+      '@paperclipai/adapter-utils': 2026.529.0
       picocolors: 1.1.1
 
   hono@4.12.18: {}
