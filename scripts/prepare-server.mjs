@@ -210,6 +210,28 @@ for (const arch of targetArches) {
   cpSync(path.join(stagingDir, "node_modules"), path.join(bundleServerDir, "node_modules"), { recursive: true });
   rmSync(path.join(bundleServerDir, "node_modules", ".bin"), { recursive: true, force: true });
 
+  // The @paperclipai/server package currently ships with embedded-postgres 18.x
+  // (beta), but existing data directories created by Docker or older Desktop
+  // installations use PostgreSQL 17. Downgrade to the latest PG17 release so
+  // that Desktop can open those data directories without a manual pg_upgrade.
+  //
+  // Once @paperclipai/server ships with PG17 by default this block can be removed.
+  console.log(`[prepare-server] Pinning embedded-postgres to PG17 for ${variant}...`);
+  execSync(
+    `npm install embedded-postgres@17.10.0-beta.17 --save-exact --no-audit --os=${nodePlatform} --cpu=${arch} --arch=${arch}`,
+    {
+      cwd: bundleServerDir,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        npm_config_arch: arch,
+        npm_config_platform: nodePlatform,
+        npm_config_target_arch: arch,
+      },
+    },
+  );
+  console.log(`[prepare-server] embedded-postgres pinned to PG17 for ${variant}.`);
+
   if (platform === "darwin") {
     console.log(`[prepare-server] Fixing dylib symlinks for ${variant} embedded-postgres...`);
     const embeddedPgScope = path.join(bundleServerDir, "node_modules", "@embedded-postgres");
