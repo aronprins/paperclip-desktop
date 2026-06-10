@@ -14,6 +14,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -149,6 +150,19 @@ function normalizeEsbuildBinary(bundleServerDir, arch) {
   );
 
   if (!existsSync(esbuildBin) || !existsSync(archEsbuildBin)) return;
+
+  // Skip if source and destination are already the same file (same inode = hardlink,
+  // or same resolved symlink path) — avoids EINVAL from cpSync.
+  try {
+    const srcStat = lstatSync(archEsbuildBin);
+    const dstStat = lstatSync(esbuildBin);
+    if (srcStat.ino === dstStat.ino && srcStat.dev === dstStat.dev) {
+      console.log(`[prepare-server] esbuild binary already correct for darwin-${packageArch}, skipping.`);
+      return;
+    }
+  } catch {
+    // stat failed — fall through and let cpSync handle it
+  }
 
   cpSync(archEsbuildBin, esbuildBin);
   console.log(`[prepare-server] Normalized esbuild binary for darwin-${packageArch}.`);
