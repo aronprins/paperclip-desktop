@@ -22,17 +22,25 @@ function readSubmissionId(payload) {
 export default async function afterSign(context) {
   if (context.electronPlatformName !== "darwin") return;
 
+  // Fail closed by default (mirrors the ALLOW_UNSIGNED_MACOS_BUILD gate in
+  // after-pack.mjs): missing notary credentials abort the build unless the
+  // operator explicitly opts out, so we can't silently emit DMG/ZIPs Gatekeeper
+  // will reject. The legacy PAPERCLIP_REQUIRE_MACOS_RELEASE_SIGNING flag still
+  // forces the requirement on.
   const shouldRequireNotarization = process.env.PAPERCLIP_REQUIRE_MACOS_RELEASE_SIGNING === "1";
+  const allowUnnotarized = process.env.ALLOW_UNNOTARIZED_MACOS_BUILD === "true";
   const hasNotaryCredentials = process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER;
 
   if (!hasNotaryCredentials) {
-    if (shouldRequireNotarization) {
+    if (shouldRequireNotarization || !allowUnnotarized) {
       requireEnv("APPLE_API_KEY");
       requireEnv("APPLE_API_KEY_ID");
       requireEnv("APPLE_API_ISSUER");
     }
 
-    console.log("[after-sign] Apple notarization credentials are not configured, skipping app notarization.");
+    console.log(
+      "[after-sign] Apple notarization credentials are not configured; ALLOW_UNNOTARIZED_MACOS_BUILD=true set, skipping app notarization.",
+    );
     return;
   }
 

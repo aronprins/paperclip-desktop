@@ -27,6 +27,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          # Injection-safe: read the dispatch input from env, never expand ${{ }}
+          # straight into the shell (a newline-bearing input could otherwise inject
+          # arbitrary vars into GITHUB_ENV for later steps holding notary creds).
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
           umask 077
@@ -55,9 +59,14 @@ jobs:
             --issuer "$APPLE_API_ISSUER" \
             >/dev/null
 
+          if ! printf '%s' "$INPUT_TAG" | grep -Eq '^v[0-9][0-9A-Za-z.+-]*$'; then
+            echo "::error::Invalid tag input: $INPUT_TAG" >&2
+            exit 1
+          fi
+
           {
             echo "APPLE_API_KEY=$API_KEY_PATH"
-            echo "NOTARIZE_TAG=${{ github.event.inputs.tag }}"
+            echo "NOTARIZE_TAG=$INPUT_TAG"
           } >> "$GITHUB_ENV"
 
       - name: Download macOS release ZIP assets

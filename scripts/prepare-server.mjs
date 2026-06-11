@@ -7,6 +7,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -232,20 +233,56 @@ const arches = platform === "darwin" ? ["x64", "arm64"] : ["x64"];
 const nodeDownloadPlatform = platform === "win32" ? "win" : platform;
 const nodeBinDir = path.join(projectRoot, "build", "node-bin");
 
+// Verify the downloaded archive against Node's published SHASUMS256.txt before it
+// is extracted and bundled into the signed app. HTTPS alone does not defend
+// against CDN compromise / corporate MITM root CAs / content substitution.
+function verifyArchiveChecksum(archivePath, archiveFileName) {
+  const sumsPath = `${archivePath}.SHASUMS256.txt`;
+  const sumsUrl = `https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt`;
+  if (platform === "win32") {
+    execSync(`powershell -Command "Invoke-WebRequest -Uri '${sumsUrl}' -OutFile '${sumsPath}'"`, { stdio: "inherit" });
+  } else {
+    execSync(`curl -fsSL -o "${sumsPath}" "${sumsUrl}"`, { stdio: "inherit" });
+  }
+
+  const sums = readFileSync(sumsPath, "utf8");
+  rmSync(sumsPath, { force: true });
+
+  const expectedLine = sums.split("\n").find((line) => line.trim().endsWith(`  ${archiveFileName}`));
+  if (!expectedLine) {
+    throw new Error(`[prepare-server] No SHASUMS256 entry found for ${archiveFileName}`);
+  }
+  const expected = expectedLine.trim().split(/\s+/)[0];
+  const actual = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
+  if (actual !== expected) {
+    throw new Error(
+      `[prepare-server] Node archive checksum mismatch for ${archiveFileName}: expected ${expected}, got ${actual}`,
+    );
+  }
+  console.log(`[prepare-server] Verified ${archiveFileName} sha256=${actual}`);
+}
+
 for (const arch of arches) {
   const destDir = path.join(nodeBinDir, `${ebPlatform}-${arch}`);
   const destBin = path.join(destDir, platform === "win32" ? "node.exe" : "node");
+  // The cache key must include the version: a bare existsSync(destBin) would keep
+  // shipping a stale binary after a NODE_VERSION bump (e.g. a security patch).
+  // Kept as a sibling (not inside destDir) so it isn't copied into the app bundle.
+  const versionMarker = path.join(nodeBinDir, `.${ebPlatform}-${arch}.node-version`);
 
-  if (existsSync(destBin)) {
+  if (existsSync(destBin) && existsSync(versionMarker) && readFileSync(versionMarker, "utf8").trim() === NODE_VERSION) {
     console.log(`[prepare-server] Node ${NODE_VERSION} ${arch} already downloaded, skipping`);
     continue;
   }
 
+  // Stale or unverified cache: rebuild from scratch.
+  rmSync(destDir, { recursive: true, force: true });
   mkdirSync(destDir, { recursive: true });
 
   const ext = platform === "win32" ? "zip" : "tar.gz";
   const archiveName = `node-${NODE_VERSION}-${nodeDownloadPlatform}-${arch}`;
-  const url = `https://nodejs.org/dist/${NODE_VERSION}/${archiveName}.${ext}`;
+  const archiveFileName = `${archiveName}.${ext}`;
+  const url = `https://nodejs.org/dist/${NODE_VERSION}/${archiveFileName}`;
   const archivePath = path.join(destDir, `node.${ext}`);
 
   console.log(`[prepare-server] Downloading Node ${NODE_VERSION} for ${nodeDownloadPlatform}-${arch}...`);
@@ -256,6 +293,8 @@ for (const arch of arches) {
     execSync(`curl -fsSL -o "${archivePath}" "${url}"`, { stdio: "inherit" });
   }
 
+  verifyArchiveChecksum(archivePath, archiveFileName);
+
   if (platform === "win32") {
     execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: "inherit" });
     cpSync(path.join(destDir, archiveName, "node.exe"), destBin);
@@ -265,6 +304,7 @@ for (const arch of arches) {
   }
 
   rmSync(archivePath, { force: true });
+  writeFileSync(versionMarker, `${NODE_VERSION}\n`, "utf8");
   console.log(`[prepare-server] Node ${NODE_VERSION} ${arch} ready at ${destBin}`);
 }
 

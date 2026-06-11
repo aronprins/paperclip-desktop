@@ -149,7 +149,16 @@ function isPortInUse(port: number): Promise<boolean> {
       sock.destroy();
       resolve(true);
     });
-    sock.on("error", () => resolve(false));
+    // A port that accepts SYN but never completes the handshake would otherwise
+    // leave this promise pending forever and stall startup.
+    sock.setTimeout(500, () => {
+      sock.destroy();
+      resolve(false);
+    });
+    sock.on("error", () => {
+      sock.destroy();
+      resolve(false);
+    });
   });
 }
 
@@ -300,6 +309,10 @@ function cleanupPidFile(): void {
 function killOrphanedServer(): void {
   try {
     const pidStr = fs.readFileSync(getPidFilePath(), "utf8").trim();
+    if (!/^\d+$/.test(pidStr)) {
+      cleanupPidFile();
+      return;
+    }
     const pid = Number.parseInt(pidStr, 10);
     if (!Number.isNaN(pid) && pid > 0) {
       process.kill(pid, 0);
@@ -366,9 +379,17 @@ function startServer(port: number): ChildProcess {
   return child;
 }
 
+let killServerPromise: Promise<void> | null = null;
+
 function killServer(): Promise<void> {
+  // Idempotent: SIGTERM/SIGINT/SIGHUP handlers and before-quit can all call this;
+  // the first caller creates the shutdown promise and everyone else awaits it.
+  if (killServerPromise) {
+    return killServerPromise;
+  }
+
   stopLocalServerMonitor();
-  return new Promise((resolve) => {
+  killServerPromise = new Promise((resolve) => {
     if (!serverProcess?.pid) {
       cleanupPidFile();
       resolve();
@@ -378,11 +399,33 @@ function killServer(): Promise<void> {
     const pid = serverProcess.pid;
     serverProcess = null;
 
-    treeKill(pid, "SIGTERM", () => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(escalation);
       cleanupPidFile();
       resolve();
+    };
+
+    // Escalate to SIGKILL if the graceful shutdown stalls so quit can't hang
+    // with the detached server orphaned.
+    const escalation = setTimeout(() => {
+      treeKill(pid, "SIGKILL", () => finish());
+    }, 5_000);
+
+    treeKill(pid, "SIGTERM", (err) => {
+      if (err) {
+        treeKill(pid, "SIGKILL", () => finish());
+        return;
+      }
+      finish();
     });
   });
+
+  return killServerPromise;
 }
 
 function killChildProcess(processToKill: ChildProcess | null): Promise<void> {
@@ -1525,7 +1568,28 @@ function remoteErrorTitle(result: RemotePreflightResult): string {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+// Prevent a second instance from killing the first instance's live server
+// (killOrphanedServer would treeKill the healthy PID) and from fighting over the
+// shared PID file / Postgres data dir.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+app.on("second-instance", () => {
+  const target = launcherWindow ?? mainWindow;
+  if (target && !target.isDestroyed()) {
+    if (target.isMinimized()) {
+      target.restore();
+    }
+    target.show();
+    target.focus();
+  }
+});
+
 app.whenReady().then(async () => {
+  if (!app.hasSingleInstanceLock()) {
+    return;
+  }
   const paperclipHome = resolvePaperclipHome();
   assertIsolatedRuntimePaths({
     env: process.env,

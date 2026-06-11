@@ -1057,6 +1057,10 @@ let selectedCard = "local";
 let editingId = null;
 let modalReturnView = "saved";
 let lastVerification = null;
+let verifyToken = 0;
+// Re-entry guard: prevents rapid double-click / Enter-repeat from firing duplicate
+// connect IPC (duplicate connect attempts / profile saves).
+let connecting = false;
 let lastErrorAction = null;
 let pendingDeleteId = null;
 let deleteTriggerEl = null;
@@ -1268,12 +1272,18 @@ function renderTabRemoteList() {
 }
 
 async function launchLocal() {
-  const rememberChoice = document.getElementById("rememberLocal").checked;
-  await launcher.setChooserMode("local_embedded");
-  lastErrorAction = { type: "local", rememberChoice };
-  resetLocalBoot();
-  showView("local-boot");
-  await launcher.connectLocal({ rememberChoice });
+  if (connecting) return;
+  connecting = true;
+  try {
+    const rememberChoice = document.getElementById("rememberLocal").checked;
+    await launcher.setChooserMode("local_embedded");
+    lastErrorAction = { type: "local", rememberChoice };
+    resetLocalBoot();
+    showView("local-boot");
+    await launcher.connectLocal({ rememberChoice });
+  } finally {
+    connecting = false;
+  }
 }
 
 function openAddRemoteFromChooser() {
@@ -1285,6 +1295,9 @@ function openAddRemoteFromChooser() {
 
 function resetVerificationUi() {
   lastVerification = null;
+  // Invalidate any in-flight verify so its result can't re-enable Connect for a URL
+  // the user has since changed.
+  verifyToken += 1;
   document.getElementById("urlError").style.display = "none";
   document.getElementById("urlSuccess").style.display = "none";
   document.getElementById("testStatus").innerHTML = "";
@@ -1350,8 +1363,15 @@ async function verifyRemote() {
   document.getElementById("testStatus").innerHTML = '<div class="status-badge testing"><div class="dot"></div>Verifying remote...</div>';
   syncRemoteActionButtons(true);
 
+  const token = ++verifyToken;
   try {
     const result = await launcher.verifyRemote({ remoteUrl });
+    // If the field was edited (or a new verify started) while this one was in
+    // flight, discard the stale result so it can't be applied to a different URL.
+    if (token !== verifyToken) {
+      return;
+    }
+    result.verifiedUrl = remoteUrl;
     lastVerification = result;
 
     if (result.reason === "invalid_url") {
@@ -1374,6 +1394,13 @@ async function continueToSignIn() {
     return;
   }
 
+  // Require the verification to match the URL currently in the field.
+  if (lastVerification.verifiedUrl !== document.getElementById("remoteUrl").value.trim()) {
+    document.getElementById("urlError").textContent = "The URL changed since it was verified. Verify again before connecting.";
+    document.getElementById("urlError").style.display = "block";
+    return;
+  }
+
   const allowInsecureHttp = getRemoteInsecureHttpChoice();
   if (lastVerification.insecureTransport && !allowInsecureHttp) {
     document.getElementById("urlError").textContent = "Confirm the insecure HTTP warning before connecting.";
@@ -1393,18 +1420,30 @@ async function continueToSignIn() {
     allowInsecureHttp,
   };
 
-  showRemoteConnectingState(lastVerification);
-  await launcher.connectRemote({
-    remoteUrl,
-    displayName,
-    saveProfile: false,
-    rememberChoice,
-    allowInsecureHttp,
-  });
+  if (connecting) return;
+  connecting = true;
+  try {
+    showRemoteConnectingState(lastVerification);
+    await launcher.connectRemote({
+      remoteUrl,
+      displayName,
+      saveProfile: false,
+      rememberChoice,
+      allowInsecureHttp,
+    });
+  } finally {
+    connecting = false;
+  }
 }
 
 async function connectAndSave() {
   if (!lastVerification || !lastVerification.ok) {
+    document.getElementById("urlError").style.display = "block";
+    return;
+  }
+
+  if (lastVerification.verifiedUrl !== document.getElementById("remoteUrl").value.trim()) {
+    document.getElementById("urlError").textContent = "The URL changed since it was verified. Verify again before connecting.";
     document.getElementById("urlError").style.display = "block";
     return;
   }
@@ -1428,14 +1467,20 @@ async function connectAndSave() {
     allowInsecureHttp,
   };
 
-  showRemoteConnectingState(lastVerification);
-  await launcher.connectRemote({
-    remoteUrl,
-    displayName,
-    saveProfile: true,
-    rememberChoice,
-    allowInsecureHttp,
-  });
+  if (connecting) return;
+  connecting = true;
+  try {
+    showRemoteConnectingState(lastVerification);
+    await launcher.connectRemote({
+      remoteUrl,
+      displayName,
+      saveProfile: true,
+      rememberChoice,
+      allowInsecureHttp,
+    });
+  } finally {
+    connecting = false;
+  }
 }
 
 async function retryLastAction() {
@@ -1582,6 +1627,7 @@ function openAddModal() {
 }
 
 function openEditModal(profileId) {
+  if (!snapshot) return;
   const profile = snapshot.profiles.find((candidate) => candidate.id === profileId);
   if (!profile || profile.mode !== "remote_existing") {
     return;
@@ -1640,6 +1686,7 @@ async function duplicateConn(profileId) {
 }
 
 function deleteConn(profileId) {
+  if (!snapshot) return;
   const profile = snapshot.profiles.find((candidate) => candidate.id === profileId);
   if (!profile) {
     return;
@@ -1674,35 +1721,41 @@ function cancelDelete() {
 }
 
 async function quickConnect(profileId) {
+  if (!snapshot || connecting) return;
   const profile = snapshot.profiles.find((candidate) => candidate.id === profileId);
   if (!profile) {
     return;
   }
 
-  if (profile.mode === "local_embedded") {
-    lastErrorAction = { type: "local", rememberChoice: false };
-    resetLocalBoot();
-    showView("local-boot");
-    await launcher.connectSavedProfile({ profileId, rememberChoice: false });
-    return;
-  }
+  connecting = true;
+  try {
+    if (profile.mode === "local_embedded") {
+      lastErrorAction = { type: "local", rememberChoice: false };
+      resetLocalBoot();
+      showView("local-boot");
+      await launcher.connectSavedProfile({ profileId, rememberChoice: false });
+      return;
+    }
 
-  const rememberChoice = getRemoteRememberChoice();
-  document.getElementById("remoteUrl").value = profile.remoteUrl || "";
-  document.getElementById("displayName").value = profile.name;
-  setInsecureHttpUi("remote", isInsecureHttpUrl(profile.remoteUrl), !!profile.allowInsecureHttp);
-  lastErrorAction = {
-    type: "remote",
-    saveProfile: false,
-    rememberChoice,
-    remoteUrl: profile.remoteUrl,
-    displayName: profile.name,
-    allowInsecureHttp: !!profile.allowInsecureHttp,
-  };
-  document.getElementById("connectingLabel").textContent = "Opening verified remote...";
-  document.getElementById("connectingUrl").textContent = profile.remoteUrl || "";
-  showView("connecting");
-  await launcher.connectSavedProfile({ profileId, rememberChoice });
+    const rememberChoice = getRemoteRememberChoice();
+    document.getElementById("remoteUrl").value = profile.remoteUrl || "";
+    document.getElementById("displayName").value = profile.name;
+    setInsecureHttpUi("remote", isInsecureHttpUrl(profile.remoteUrl), !!profile.allowInsecureHttp);
+    lastErrorAction = {
+      type: "remote",
+      saveProfile: false,
+      rememberChoice,
+      remoteUrl: profile.remoteUrl,
+      displayName: profile.name,
+      allowInsecureHttp: !!profile.allowInsecureHttp,
+    };
+    document.getElementById("connectingLabel").textContent = "Opening verified remote...";
+    document.getElementById("connectingUrl").textContent = profile.remoteUrl || "";
+    showView("connecting");
+    await launcher.connectSavedProfile({ profileId, rememberChoice });
+  } finally {
+    connecting = false;
+  }
 }
 
 function resetLocalBoot() {

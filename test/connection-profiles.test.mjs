@@ -46,6 +46,49 @@ test("connection store persists remote profiles and startup preference", () => {
   assert.equal(reloaded.getStartupProfileId(), profile.id);
 });
 
+test("sanitizes tampered profile ids and de-duplicates on load (PD-011/PD-046)", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-tampered-"));
+  const filePath = getConnectionsFilePath(tempDir);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const dupId = "11111111-1111-1111-1111-111111111111";
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({
+      version: 1,
+      state: {},
+      remoteProfiles: [
+        { id: "../../../x", mode: "remote_existing", remoteUrl: "https://a.example.com" },
+        { id: dupId, mode: "remote_existing", remoteUrl: "https://b.example.com" },
+        { id: dupId, mode: "remote_existing", remoteUrl: "https://c.example.com" },
+      ],
+    }),
+    "utf8",
+  );
+
+  const store = new ConnectionStore(filePath);
+  const profiles = store.getSnapshot().remoteProfiles;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // Tampered non-UUID id is regenerated; duplicate id collapses to one profile.
+  assert.equal(profiles.length, 2);
+  for (const profile of profiles) {
+    assert.match(profile.id, uuid);
+  }
+  assert.equal(new Set(profiles.map((p) => p.id)).size, profiles.length);
+});
+
+test("preserves an unreadable connections file instead of clobbering it (PD-042)", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-corrupt-"));
+  const filePath = getConnectionsFilePath(tempDir);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, "{ this is not json", "utf8");
+
+  // Loading falls back to defaults but first backs up the corrupt file.
+  const store = new ConnectionStore(filePath);
+  store.setChooserMode("local_embedded"); // triggers a persist()
+  assert.equal(fs.existsSync(`${filePath}.bak`), true);
+});
+
 test("connection store keeps a synthetic local profile", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-local-"));
   const store = new ConnectionStore(getConnectionsFilePath(tempDir));

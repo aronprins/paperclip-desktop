@@ -172,7 +172,12 @@ function dependencyPath(nodeModulesDir, dependencyName) {
 function verifyServerRuntimeDependencies(appPath) {
   const serverDir = join(appPath, "Contents", "Resources", "app-server", "server");
   const packagePath = join(serverDir, "package.json");
-  if (!existsSync(packagePath)) return null;
+  // The embedded server bundle is mandatory: a packaging mistake that omits it must
+  // fail verification, not silently skip the dylib/UI/migration checks and let a
+  // gutted-but-signed app pass green.
+  if (!existsSync(packagePath)) {
+    throw new Error(`Packaged app is missing the embedded server bundle: ${packagePath}`);
+  }
 
   const uiIndexPath = join(serverDir, "ui-dist", "index.html");
   if (!existsSync(uiIndexPath)) {

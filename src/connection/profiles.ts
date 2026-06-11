@@ -16,6 +16,8 @@ import type {
   RemotePreflightResult,
 } from "./types";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function getConnectionsFilePath(userDataPath: string): string {
   return path.join(userDataPath, CONNECTIONS_FILE_NAME);
 }
@@ -249,15 +251,38 @@ export class ConnectionStore {
   private persist(): void {
     this.cache = sanitizeConnectionsFile(this.cache);
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(this.cache, null, 2), "utf8");
+    // Atomic write: a crash/power-loss mid-write would otherwise leave a truncated
+    // file that the discriminating reader then treats as corrupt. Restrictive mode
+    // because the file carries infrastructure metadata (server URLs/timestamps).
+    const tmpPath = `${this.filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(this.cache, null, 2), { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tmpPath, this.filePath);
   }
 }
 
 function readConnectionsFile(filePath: string): PersistedConnectionsFile {
+  let raw: string;
   try {
-    const raw = fs.readFileSync(filePath, "utf8");
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return createDefaultConnectionsFile();
+    }
+    // EACCES, transient I/O, etc. — do NOT fall through to defaults, which the next
+    // persist() would clobber over the still-present (recoverable) file.
+    throw error;
+  }
+
+  try {
     return sanitizeConnectionsFile(JSON.parse(raw));
   } catch {
+    // Unparseable JSON: preserve the unreadable file before the next overwrite
+    // destroys it, then start from defaults.
+    try {
+      fs.copyFileSync(filePath, `${filePath}.bak`);
+    } catch {
+      // best-effort backup only
+    }
     return createDefaultConnectionsFile();
   }
 }
@@ -268,10 +293,19 @@ function sanitizeConnectionsFile(raw: unknown): PersistedConnectionsFile {
   }
 
   const state = sanitizeConnectionState(raw.state);
+  const seenIds = new Set<string>();
   const remoteProfiles = Array.isArray(raw.remoteProfiles)
     ? raw.remoteProfiles
         .map((profile) => sanitizeRemoteProfile(profile))
         .filter((profile): profile is ConnectionProfile => profile !== null)
+        // Drop duplicate ids so two profiles can't alias onto one session partition.
+        .filter((profile) => {
+          if (seenIds.has(profile.id)) {
+            return false;
+          }
+          seenIds.add(profile.id);
+          return true;
+        })
     : [];
 
   return {
@@ -314,8 +348,12 @@ function sanitizeRemoteProfile(raw: unknown): ConnectionProfile | null {
     const normalized = normalizeRemoteUrl(raw.remoteUrl);
     const createdAt = typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString();
     const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : createdAt;
+    // Only accept canonical UUID ids. A tampered id (e.g. "../../x") otherwise flows
+    // into the Electron session partition name and into launcher onclick markup;
+    // regenerate anything that doesn't match. (Covers PD-011 and PD-046.)
+    const id = UUID_PATTERN.test(raw.id) ? raw.id : randomUUID();
     return {
-      id: raw.id,
+      id,
       name: sanitizeProfileName(typeof raw.name === "string" ? raw.name : undefined, normalized.origin),
       mode: "remote_existing",
       remoteUrl: normalized.normalizedUrl,

@@ -196,22 +196,26 @@ export async function preflightRemoteConnection(options: PreflightOptions): Prom
   }
 }
 
+// Health payloads are tiny; cap the buffered body so a hostile remote can't OOM
+// the main process by trickling a multi-GB "application/json" response.
+const MAX_PREFLIGHT_BODY_BYTES = 256 * 1024;
+
+interface BoundedJson {
+  status: number;
+  json: unknown;
+  jsonError: boolean;
+}
+
 async function fetchJson(
   fetchImpl: typeof fetch,
   url: URL,
   timeoutMs: number,
 ): Promise<{ status: number; body: unknown }> {
-  const response = await fetchWithTimeout(fetchImpl, url, timeoutMs);
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (!contentType.toLowerCase().includes("application/json")) {
-    return { status: response.status, body: null };
-  }
-
-  return {
-    status: response.status,
-    body: await response.json(),
-  };
+  const result = await fetchBoundedJson(fetchImpl, url, timeoutMs);
+  // A malformed/oversized JSON body is not a transport failure — surface it as a
+  // non-Paperclip response (parseHealthPayload(null) → "not_paperclip") rather
+  // than letting it throw and be misclassified as "unreachable".
+  return { status: result.status, body: result.jsonError ? null : result.json };
 }
 
 async function fetchSession(
@@ -219,21 +223,20 @@ async function fetchSession(
   url: URL,
   timeoutMs: number,
 ): Promise<{ sessionState: SessionState }> {
-  const response = await fetchWithTimeout(fetchImpl, url, timeoutMs);
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
+  const result = await fetchBoundedJson(fetchImpl, url, timeoutMs);
+  if (result.jsonError) {
     return { sessionState: "unknown" };
   }
 
-  const body = await response.json();
+  const body = result.json;
 
-  if (response.status === 401) {
+  if (result.status === 401) {
     return isPaperclipAuthRequiredPayload(body)
       ? { sessionState: "signed_out" }
       : { sessionState: "unknown" };
   }
 
-  if (response.status !== 200) {
+  if (result.status !== 200) {
     return { sessionState: "unknown" };
   }
 
@@ -244,20 +247,72 @@ async function fetchSession(
   return { sessionState: "unknown" };
 }
 
-async function fetchWithTimeout(fetchImpl: typeof fetch, url: URL, timeoutMs: number): Promise<Response> {
+// Keeps the abort timer armed until the body is fully consumed (fetch resolves at
+// headers-complete, so reading the body must stay under the same deadline) and
+// enforces a hard size cap while reading.
+async function fetchBoundedJson(fetchImpl: typeof fetch, url: URL, timeoutMs: number): Promise<BoundedJson> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetchImpl(url, {
+    const response = await fetchImpl(url, {
       method: "GET",
       headers: { accept: "application/json" },
       redirect: "manual",
       signal: controller.signal,
     });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      await response.body?.cancel().catch(() => undefined);
+      return { status: response.status, json: null, jsonError: false };
+    }
+
+    let text: string;
+    try {
+      text = await readBodyWithLimit(response, MAX_PREFLIGHT_BODY_BYTES);
+    } catch {
+      return { status: response.status, json: null, jsonError: true };
+    }
+
+    try {
+      return { status: response.status, json: JSON.parse(text), jsonError: false };
+    } catch {
+      return { status: response.status, json: null, jsonError: true };
+    }
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) {
+      throw new Error("Response body exceeds size limit");
+    }
+    return text;
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(`Response body exceeds ${maxBytes} bytes`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function parseHealthPayload(body: unknown): ParsedHealthPayload | null {
