@@ -3,7 +3,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -27,6 +27,17 @@ function takeOption(name) {
 
 function hasFlag(name) {
   return args.includes(name);
+}
+
+function assertRepoContainedOutput(targetPath, optionName) {
+  const relativePath = relative(projectRoot, targetPath);
+  const insideProject = relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  if (!insideProject && !hasFlag("--allow-external-output")) {
+    throw new Error(
+      `${optionName} must resolve inside the project directory. ` +
+      "Pass --allow-external-output to intentionally write elsewhere.",
+    );
+  }
 }
 
 function run(command, commandArgs, options = {}) {
@@ -156,6 +167,7 @@ function verifyOutput(outputDir) {
 function main() {
   const inputRoot = resolve(projectRoot, takeOption("--input-root") || "release/local-macos");
   const outputRoot = resolve(projectRoot, takeOption("--output-root") || "release/notarized-macos");
+  assertRepoContainedOutput(outputRoot, "--output-root");
   const skipNotarize = hasFlag("--skip-notarize");
   const archs = takeOption("--arch") ? [takeOption("--arch")] : ["x64", "arm64"];
 

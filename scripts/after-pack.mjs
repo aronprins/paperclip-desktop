@@ -103,6 +103,57 @@ function collectSignableBinaries(dir, out = []) {
   return out;
 }
 
+function removeAppleMetadataFiles(dir) {
+  if (!existsSync(dir)) return;
+
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    let stat;
+
+    try {
+      stat = lstatSync(full);
+    } catch {
+      continue;
+    }
+
+    if (stat.isSymbolicLink()) continue;
+
+    if (entry.startsWith("._") || entry === ".DS_Store") {
+      rmSync(full, { recursive: true, force: true });
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      removeAppleMetadataFiles(full);
+    }
+  }
+}
+
+function clearExtendedAttributes(dir) {
+  if (!existsSync(dir)) return;
+
+  let stat;
+  try {
+    stat = lstatSync(dir);
+  } catch {
+    return;
+  }
+
+  if (stat.isSymbolicLink()) return;
+
+  try {
+    execFileSync("xattr", ["-c", dir], { stdio: "ignore" });
+  } catch {
+    // best effort only
+  }
+
+  if (!stat.isDirectory()) return;
+
+  for (const entry of readdirSync(dir)) {
+    clearExtendedAttributes(join(dir, entry));
+  }
+}
+
 function stripBundleMetadata(appPath) {
   console.log("[after-pack] Cleaning broken symlinks...");
   removeBrokenSymlinks(join(appPath, "Contents"));
@@ -113,10 +164,10 @@ function stripBundleMetadata(appPath) {
   } catch {
     // best effort only
   }
-  execFileSync("sh", ["-c", `find "${appPath}" -name "._*" -delete 2>/dev/null; find "${appPath}" -name ".DS_Store" -delete 2>/dev/null; true`]);
+  removeAppleMetadataFiles(appPath);
 
   console.log("[after-pack] Stripping extended attributes...");
-  execFileSync("sh", ["-c", `find "${appPath}" ! -type l -print0 | xargs -0 -n 200 xattr -c 2>/dev/null; true`]);
+  clearExtendedAttributes(appPath);
 }
 
 function signTarget(target, identity, entitlements) {

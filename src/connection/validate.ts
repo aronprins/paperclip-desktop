@@ -75,6 +75,7 @@ function isPrivateIpv4(hostname: string): boolean {
 
   const [a, b] = parts;
   return (
+    a === 0 || // 0.0.0.0 routes to loopback on macOS/Linux
     a === 10 ||
     a === 127 ||
     (a === 172 && b >= 16 && b <= 31) ||
@@ -85,8 +86,23 @@ function isPrivateIpv4(hostname: string): boolean {
 }
 
 function isPrivateIpv6(hostname: string): boolean {
-  const lower = normalizeHostname(hostname);
-  return lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd");
+  let lower = normalizeHostname(hostname);
+  // Only an IPv6 literal can be private here. Without this guard, hostnames like
+  // "fcbarcelona.com" (startsWith "fc") would be misclassified as private.
+  if (!lower.includes(":")) {
+    return false;
+  }
+  // Unwrap IPv4-mapped IPv6 (::ffff:192.168.0.1) so the embedded v4 is classified.
+  const mapped = lower.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) {
+    return isPrivateIpv4(mapped[1]);
+  }
+  return (
+    lower === "::1" ||
+    lower.startsWith("fc") ||
+    lower.startsWith("fd") ||
+    lower.startsWith("fe80:")
+  );
 }
 
 function normalizeHostname(hostname: string): string {

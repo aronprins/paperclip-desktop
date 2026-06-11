@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -39,6 +39,17 @@ function takeOption(name) {
 
 function hasFlag(name) {
   return args.includes(name);
+}
+
+function assertRepoContainedOutput(targetPath, optionName) {
+  const relativePath = relative(projectRoot, targetPath);
+  const insideProject = relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  if (!insideProject && !hasFlag("--allow-external-output")) {
+    throw new Error(
+      `${optionName} must resolve inside the project directory. ` +
+      "Pass --allow-external-output to intentionally write elsewhere.",
+    );
+  }
 }
 
 function run(command, commandArgs, options = {}) {
@@ -257,14 +268,19 @@ function generateIcns(sourcePng, targetIcns, stageRoot) {
   run("iconutil", ["-c", "icns", iconsetDir, "-o", targetIcns]);
 }
 
+function readInstalledPackageVersion(name) {
+  const installed = JSON.parse(
+    readFileSync(join(projectRoot, "node_modules", ...name.split("/"), "package.json"), "utf8"),
+  );
+  if (typeof installed.version !== "string" || !installed.version) {
+    throw new Error(`Could not read installed version for ${name}.`);
+  }
+  return installed.version;
+}
+
 function buildStagePackageJson() {
   const runtimeDependencies = Object.fromEntries(
-    Object.keys(rootPackageJson.dependencies ?? {}).map((name) => {
-      const installed = JSON.parse(
-        readFileSync(join(projectRoot, "node_modules", ...name.split("/"), "package.json"), "utf8"),
-      );
-      return [name, installed.version];
-    }),
+    Object.keys(rootPackageJson.dependencies ?? {}).map((name) => [name, readInstalledPackageVersion(name)]),
   );
 
   return {
@@ -339,7 +355,7 @@ function buildStageConfig(arch) {
         { x: 410, y: 220, type: "link", path: "/Applications" },
       ],
     },
-    electronVersion: rootPackageJson.devDependencies.electron.replace(/^[^\d]*/, ""),
+    electronVersion: readInstalledPackageVersion("electron"),
   };
 }
 
@@ -534,6 +550,7 @@ function resolveArches() {
 function main() {
   const arches = resolveArches();
   const outputRoot = resolve(projectRoot, takeOption("--output-root") || "release/local-macos");
+  assertRepoContainedOutput(outputRoot, "--output-root");
   const keepStage = hasFlag("--keep-stage");
   const skipInstall = hasFlag("--skip-install");
   const skipBuild = hasFlag("--skip-build");

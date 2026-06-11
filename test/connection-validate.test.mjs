@@ -54,3 +54,15 @@ test("isPrivateHostname recognises tailnet and RFC1918 hosts", () => {
   assert.equal(isPrivateHostname("[fd00::1]"), true);
   assert.equal(isPrivateHostname("paperclip.example.com"), false);
 });
+
+test("isPrivateHostname does not misclassify public hosts starting with fc/fd (PD-043)", () => {
+  assert.equal(isPrivateHostname("fcbarcelona.com"), false);
+  assert.equal(isPrivateHostname("fd-host.example.com"), false);
+});
+
+test("isPrivateHostname covers 0.0.0.0, link-local, and IPv4-mapped IPv6 (PD-044)", () => {
+  assert.equal(isPrivateHostname("0.0.0.0"), true);
+  assert.equal(isPrivateHostname("[fe80::1]"), true);
+  assert.equal(isPrivateHostname("[::ffff:192.168.1.50]"), true);
+  assert.equal(isPrivateHostname("[::ffff:8.8.8.8]"), false);
+});

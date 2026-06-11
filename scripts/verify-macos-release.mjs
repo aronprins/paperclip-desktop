@@ -7,6 +7,11 @@ const outputDir = resolve(process.argv[2] || "release/local-macos");
 const requireStapled = process.argv.includes("--require-stapled");
 const expectedIdentity = process.env.APPLE_CODESIGN_IDENTITY?.trim() || null;
 const expectedTeamId = process.env.APPLE_TEAM_ID?.trim() || null;
+if (!requireStapled && !expectedIdentity && !expectedTeamId) {
+  throw new Error(
+    "macOS release verification requires APPLE_CODESIGN_IDENTITY, APPLE_TEAM_ID, or --require-stapled.",
+  );
+}
 const MACH_O_MAGICS = new Set([
   "feedface",
   "cefaedfe",
@@ -172,7 +177,12 @@ function dependencyPath(nodeModulesDir, dependencyName) {
 function verifyServerRuntimeDependencies(appPath) {
   const serverDir = join(appPath, "Contents", "Resources", "app-server", "server");
   const packagePath = join(serverDir, "package.json");
-  if (!existsSync(packagePath)) return null;
+  // The embedded server bundle is mandatory: a packaging mistake that omits it must
+  // fail verification, not silently skip the dylib/UI/migration checks and let a
+  // gutted-but-signed app pass green.
+  if (!existsSync(packagePath)) {
+    throw new Error(`Packaged app is missing the embedded server bundle: ${packagePath}`);
+  }
 
   const uiIndexPath = join(serverDir, "ui-dist", "index.html");
   if (!existsSync(uiIndexPath)) {

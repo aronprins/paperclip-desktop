@@ -10,16 +10,17 @@
  * Usage: node scripts/dev.mjs
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
+const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 
 // 1. Compile TS
 console.log("[dev] Compiling TypeScript...");
-execSync("npx tsc", { cwd: projectRoot, stdio: "inherit" });
+execFileSync(npxCommand, ["tsc"], { cwd: projectRoot, stdio: "inherit" });
 
 // 2. Launch Electron
 console.log("[dev] Starting Electron...");

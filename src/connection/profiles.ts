@@ -16,6 +16,8 @@ import type {
   RemotePreflightResult,
 } from "./types";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function getConnectionsFilePath(userDataPath: string): string {
   return path.join(userDataPath, CONNECTIONS_FILE_NAME);
 }
@@ -191,8 +193,7 @@ export class ConnectionStore {
     profile.lastConnectedAt = now;
     profile.updatedAt = now;
     if (result) {
-      profile.remoteUrl = result.normalizedUrl;
-      profile.allowInsecureHttp = result.insecureTransport ? true : undefined;
+      this.applyRemoteProfileUrl(profile, result.normalizedUrl, false);
       profile.lastHealth = deriveHealth(result);
       profile.lastDeploymentMode = result.deploymentMode;
       profile.lastSessionState = result.sessionState;
@@ -204,8 +205,7 @@ export class ConnectionStore {
   recordRemoteHealth(profileId: string, result: RemotePreflightResult, now = new Date().toISOString()): void {
     const profile = this.requireRemoteProfile(profileId);
     profile.updatedAt = now;
-    profile.remoteUrl = result.normalizedUrl;
-    profile.allowInsecureHttp = result.insecureTransport ? true : undefined;
+    this.applyRemoteProfileUrl(profile, result.normalizedUrl, false);
     profile.lastHealth = deriveHealth(result);
     profile.lastDeploymentMode = result.deploymentMode;
     profile.lastSessionState = result.sessionState;
@@ -219,8 +219,7 @@ export class ConnectionStore {
     now = new Date().toISOString(),
   ): void {
     const profile = this.requireRemoteProfile(profileId);
-    profile.remoteUrl = normalizedUrl;
-    profile.allowInsecureHttp = allowInsecureHttp ? true : undefined;
+    this.applyRemoteProfileUrl(profile, normalizedUrl, allowInsecureHttp);
     profile.updatedAt = now;
     this.persist();
   }
@@ -246,19 +245,66 @@ export class ConnectionStore {
     return profile;
   }
 
+  private applyRemoteProfileUrl(
+    profile: ConnectionProfile,
+    remoteUrl: string,
+    allowInsecureHttp: boolean,
+  ): void {
+    const normalized = normalizeRemoteUrl(remoteUrl);
+    if (normalized.insecureTransport && allowInsecureHttp !== true && profile.allowInsecureHttp !== true) {
+      throw new Error("HTTP remotes require confirming that you want to allow an insecure connection.");
+    }
+
+    profile.remoteUrl = normalized.normalizedUrl;
+    profile.allowInsecureHttp = normalized.insecureTransport ? true : undefined;
+  }
+
   private persist(): void {
     this.cache = sanitizeConnectionsFile(this.cache);
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(this.cache, null, 2), "utf8");
+    // Atomic write: a crash/power-loss mid-write would otherwise leave a truncated
+    // file that the discriminating reader then treats as corrupt. Restrictive mode
+    // because the file carries infrastructure metadata (server URLs/timestamps).
+    const tmpPath = `${this.filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(this.cache, null, 2), { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tmpPath, this.filePath);
   }
 }
 
 function readConnectionsFile(filePath: string): PersistedConnectionsFile {
+  let raw: string;
   try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    return sanitizeConnectionsFile(JSON.parse(raw));
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return createDefaultConnectionsFile();
+    }
+    // EACCES, transient I/O, etc. — do NOT fall through to defaults, which the next
+    // persist() would clobber over the still-present (recoverable) file.
+    throw error;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (isObject(parsed) && typeof parsed.version === "number" && parsed.version > CONNECTIONS_FILE_VERSION) {
+      backupConnectionsFile(filePath);
+      return createDefaultConnectionsFile();
+    }
+
+    return sanitizeConnectionsFile(parsed);
   } catch {
+    // Unparseable JSON: preserve the unreadable file before the next overwrite
+    // destroys it, then start from defaults.
+    backupConnectionsFile(filePath);
     return createDefaultConnectionsFile();
+  }
+}
+
+function backupConnectionsFile(filePath: string): void {
+  try {
+    fs.copyFileSync(filePath, `${filePath}.bak`);
+  } catch {
+    // best-effort backup only
   }
 }
 
@@ -268,10 +314,19 @@ function sanitizeConnectionsFile(raw: unknown): PersistedConnectionsFile {
   }
 
   const state = sanitizeConnectionState(raw.state);
+  const seenIds = new Set<string>();
   const remoteProfiles = Array.isArray(raw.remoteProfiles)
     ? raw.remoteProfiles
         .map((profile) => sanitizeRemoteProfile(profile))
         .filter((profile): profile is ConnectionProfile => profile !== null)
+        // Drop duplicate ids so two profiles can't alias onto one session partition.
+        .filter((profile) => {
+          if (seenIds.has(profile.id)) {
+            return false;
+          }
+          seenIds.add(profile.id);
+          return true;
+        })
     : [];
 
   return {
@@ -314,8 +369,12 @@ function sanitizeRemoteProfile(raw: unknown): ConnectionProfile | null {
     const normalized = normalizeRemoteUrl(raw.remoteUrl);
     const createdAt = typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString();
     const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : createdAt;
+    // Only accept canonical UUID ids. A tampered id (e.g. "../../x") otherwise flows
+    // into the Electron session partition name and into launcher onclick markup;
+    // regenerate anything that doesn't match. (Covers PD-011 and PD-046.)
+    const id = UUID_PATTERN.test(raw.id) ? raw.id : randomUUID();
     return {
-      id: raw.id,
+      id,
       name: sanitizeProfileName(typeof raw.name === "string" ? raw.name : undefined, normalized.origin),
       mode: "remote_existing",
       remoteUrl: normalized.normalizedUrl,

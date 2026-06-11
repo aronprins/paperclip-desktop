@@ -53,6 +53,9 @@ jobs:
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          # Injection-safe: read dispatch inputs from env, not via ${{ }} in-shell.
+          INPUT_X64_SUBMISSION_ID: ${{ github.event.inputs.x64_submission_id }}
+          INPUT_ARM64_SUBMISSION_ID: ${{ github.event.inputs.arm64_submission_id }}
         run: |
           set -euo pipefail
           mkdir -p notarization-status
@@ -67,8 +70,8 @@ jobs:
               --output-format json > "notarization-status/${label}.info.json"
           }
 
-          query_status "x64" "${{ github.event.inputs.x64_submission_id }}"
-          query_status "arm64" "${{ github.event.inputs.arm64_submission_id }}"
+          query_status "x64" "$INPUT_X64_SUBMISSION_ID"
+          query_status "arm64" "$INPUT_ARM64_SUBMISSION_ID"
 
           python - <<'PY'
           import json
@@ -85,7 +88,7 @@ jobs:
 
           cat notarization-status/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: notarization-status
           path: notarization-status

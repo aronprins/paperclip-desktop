@@ -30,7 +30,7 @@ const updaterLogger = {
 // GitHub 404 feed miss until a release feed actually exists.
 autoUpdater.logger = updaterLogger as typeof log;
 autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.autoInstallOnAppQuit = false;
 
 let activeWindow: BrowserWindow | null = null;
 let updaterInitialized = false;
@@ -68,10 +68,10 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
 
   scheduledChecksStarted = true;
 
-  void checkForUpdatesSilently({ downloadIfAvailable: true });
+  void checkForUpdatesSilently({ downloadIfAvailable: false });
   setInterval(
     () => {
-      void checkForUpdatesSilently({ downloadIfAvailable: true });
+      void checkForUpdatesSilently({ downloadIfAvailable: false });
     },
     4 * 60 * 60 * 1000,
   );
@@ -318,7 +318,6 @@ async function promptToRestart(version: string): Promise<void> {
     });
 
     if (response === 0) {
-      downloadedVersion = null;
       autoUpdater.quitAndInstall();
     }
   } finally {
