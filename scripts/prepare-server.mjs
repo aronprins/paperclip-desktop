@@ -6,7 +6,7 @@
  * into the app.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -41,6 +41,7 @@ const platform = process.platform;
 const nodePlatform = platform === "win32" ? "win32" : platform;
 const ebPlatform = platform === "darwin" ? "mac" : platform === "win32" ? "win" : "linux";
 const targetArches = platform === "darwin" ? ["x64", "arm64"] : ["x64"];
+const npmCommand = platform === "win32" ? "npm.cmd" : "npm";
 
 rmSync(stagingRootDir, { recursive: true, force: true });
 rmSync(bundleRootDir, { recursive: true, force: true });
@@ -74,6 +75,14 @@ function fixDylibSymlinks(libDir) {
 }
 
 function removeFinderDuplicates(rootDir) {
+  function originalFinderDuplicatePath(file) {
+    const dir = path.dirname(file);
+    const ext = path.extname(file);
+    const stem = path.basename(file, ext);
+    const match = stem.match(/^(.*) \d+$/);
+    return match ? path.join(dir, `${match[1]}${ext}`) : null;
+  }
+
   function* walkDir(dir) {
     for (const entry of readdirSync(dir)) {
       const full = path.join(dir, entry);
@@ -96,8 +105,8 @@ function removeFinderDuplicates(rootDir) {
 
   const duplicates = [];
   for (const file of walkDir(rootDir)) {
-    const base = path.basename(file);
-    if (/ \d+(\.[^/]+)?$/.test(base) && / \d+/.test(base)) {
+    const originalPath = originalFinderDuplicatePath(file);
+    if (originalPath && existsSync(originalPath)) {
       duplicates.push(file);
     }
   }
@@ -181,8 +190,9 @@ for (const arch of targetArches) {
     ),
   );
 
-  execSync(
-    `npm install --production --os=${nodePlatform} --cpu=${arch} --arch=${arch}`,
+  execFileSync(
+    npmCommand,
+    ["install", "--production", `--os=${nodePlatform}`, `--cpu=${arch}`, `--arch=${arch}`],
     {
       cwd: stagingDir,
       stdio: "inherit",
@@ -240,9 +250,13 @@ function verifyArchiveChecksum(archivePath, archiveFileName) {
   const sumsPath = `${archivePath}.SHASUMS256.txt`;
   const sumsUrl = `https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt`;
   if (platform === "win32") {
-    execSync(`powershell -Command "Invoke-WebRequest -Uri '${sumsUrl}' -OutFile '${sumsPath}'"`, { stdio: "inherit" });
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", "Invoke-WebRequest", "-Uri", sumsUrl, "-OutFile", sumsPath],
+      { stdio: "inherit" },
+    );
   } else {
-    execSync(`curl -fsSL -o "${sumsPath}" "${sumsUrl}"`, { stdio: "inherit" });
+    execFileSync("curl", ["-fsSL", "-o", sumsPath, sumsUrl], { stdio: "inherit" });
   }
 
   const sums = readFileSync(sumsPath, "utf8");
@@ -288,19 +302,31 @@ for (const arch of arches) {
   console.log(`[prepare-server] Downloading Node ${NODE_VERSION} for ${nodeDownloadPlatform}-${arch}...`);
 
   if (platform === "win32") {
-    execSync(`powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${archivePath}'"`, { stdio: "inherit" });
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", "Invoke-WebRequest", "-Uri", url, "-OutFile", archivePath],
+      { stdio: "inherit" },
+    );
   } else {
-    execSync(`curl -fsSL -o "${archivePath}" "${url}"`, { stdio: "inherit" });
+    execFileSync("curl", ["-fsSL", "-o", archivePath, url], { stdio: "inherit" });
   }
 
   verifyArchiveChecksum(archivePath, archiveFileName);
 
   if (platform === "win32") {
-    execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: "inherit" });
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", "Expand-Archive", "-Path", archivePath, "-DestinationPath", destDir, "-Force"],
+      { stdio: "inherit" },
+    );
     cpSync(path.join(destDir, archiveName, "node.exe"), destBin);
     rmSync(path.join(destDir, archiveName), { recursive: true, force: true });
   } else {
-    execSync(`tar -xzf "${archivePath}" -C "${destDir}" --strip-components=2 "${archiveName}/bin/node"`, { stdio: "inherit" });
+    execFileSync(
+      "tar",
+      ["-xzf", archivePath, "-C", destDir, "--strip-components=2", `${archiveName}/bin/node`],
+      { stdio: "inherit" },
+    );
   }
 
   rmSync(archivePath, { force: true });

@@ -193,8 +193,7 @@ export class ConnectionStore {
     profile.lastConnectedAt = now;
     profile.updatedAt = now;
     if (result) {
-      profile.remoteUrl = result.normalizedUrl;
-      profile.allowInsecureHttp = result.insecureTransport ? true : undefined;
+      this.applyRemoteProfileUrl(profile, result.normalizedUrl, false);
       profile.lastHealth = deriveHealth(result);
       profile.lastDeploymentMode = result.deploymentMode;
       profile.lastSessionState = result.sessionState;
@@ -206,8 +205,7 @@ export class ConnectionStore {
   recordRemoteHealth(profileId: string, result: RemotePreflightResult, now = new Date().toISOString()): void {
     const profile = this.requireRemoteProfile(profileId);
     profile.updatedAt = now;
-    profile.remoteUrl = result.normalizedUrl;
-    profile.allowInsecureHttp = result.insecureTransport ? true : undefined;
+    this.applyRemoteProfileUrl(profile, result.normalizedUrl, false);
     profile.lastHealth = deriveHealth(result);
     profile.lastDeploymentMode = result.deploymentMode;
     profile.lastSessionState = result.sessionState;
@@ -221,8 +219,7 @@ export class ConnectionStore {
     now = new Date().toISOString(),
   ): void {
     const profile = this.requireRemoteProfile(profileId);
-    profile.remoteUrl = normalizedUrl;
-    profile.allowInsecureHttp = allowInsecureHttp ? true : undefined;
+    this.applyRemoteProfileUrl(profile, normalizedUrl, allowInsecureHttp);
     profile.updatedAt = now;
     this.persist();
   }
@@ -246,6 +243,20 @@ export class ConnectionStore {
     }
 
     return profile;
+  }
+
+  private applyRemoteProfileUrl(
+    profile: ConnectionProfile,
+    remoteUrl: string,
+    allowInsecureHttp: boolean,
+  ): void {
+    const normalized = normalizeRemoteUrl(remoteUrl);
+    if (normalized.insecureTransport && allowInsecureHttp !== true && profile.allowInsecureHttp !== true) {
+      throw new Error("HTTP remotes require confirming that you want to allow an insecure connection.");
+    }
+
+    profile.remoteUrl = normalized.normalizedUrl;
+    profile.allowInsecureHttp = normalized.insecureTransport ? true : undefined;
   }
 
   private persist(): void {
@@ -274,16 +285,26 @@ function readConnectionsFile(filePath: string): PersistedConnectionsFile {
   }
 
   try {
-    return sanitizeConnectionsFile(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    if (isObject(parsed) && typeof parsed.version === "number" && parsed.version > CONNECTIONS_FILE_VERSION) {
+      backupConnectionsFile(filePath);
+      return createDefaultConnectionsFile();
+    }
+
+    return sanitizeConnectionsFile(parsed);
   } catch {
     // Unparseable JSON: preserve the unreadable file before the next overwrite
     // destroys it, then start from defaults.
-    try {
-      fs.copyFileSync(filePath, `${filePath}.bak`);
-    } catch {
-      // best-effort backup only
-    }
+    backupConnectionsFile(filePath);
     return createDefaultConnectionsFile();
+  }
+}
+
+function backupConnectionsFile(filePath: string): void {
+  try {
+    fs.copyFileSync(filePath, `${filePath}.bak`);
+  } catch {
+    // best-effort backup only
   }
 }
 

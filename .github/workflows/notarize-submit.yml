@@ -93,6 +93,11 @@ jobs:
             local zip_path="$2"
             local output_path="notarization-output/${label}.submit.json"
 
+            if [ ! -f "$zip_path" ]; then
+              echo "::error::Missing ${label} ZIP asset for notarization." >&2
+              exit 1
+            fi
+
             xcrun notarytool submit "$zip_path" \
               --key "$APPLE_API_KEY" \
               --key-id "$APPLE_API_KEY_ID" \
@@ -101,8 +106,24 @@ jobs:
               --output-format json > "$output_path"
           }
 
-          submit_zip "x64" "$(find notarization-input -type f -name 'Paperclip-Desktop-*-mac.zip' ! -name '*arm64*' | head -n 1)"
-          submit_zip "arm64" "$(find notarization-input -type f -name 'Paperclip-Desktop-*-arm64-mac.zip' | head -n 1)"
+          x64_zips=()
+          while IFS= read -r zip_path; do
+            x64_zips+=("$zip_path")
+          done < <(find notarization-input -type f -name 'Paperclip-Desktop-*-mac.zip' ! -name '*arm64*' | sort)
+
+          arm64_zips=()
+          while IFS= read -r zip_path; do
+            arm64_zips+=("$zip_path")
+          done < <(find notarization-input -type f -name 'Paperclip-Desktop-*-arm64-mac.zip' | sort)
+          if [ "${#x64_zips[@]}" -ne 1 ] || [ "${#arm64_zips[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one x64 and one arm64 mac ZIP for notarization." >&2
+            printf 'x64 matches: %s\n' "${x64_zips[@]:-<none>}" >&2
+            printf 'arm64 matches: %s\n' "${arm64_zips[@]:-<none>}" >&2
+            exit 1
+          fi
+
+          submit_zip "x64" "${x64_zips[0]}"
+          submit_zip "arm64" "${arm64_zips[0]}"
 
           python - <<'PY'
           import json
@@ -120,7 +141,7 @@ jobs:
 
           cat notarization-output/summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: notarization-submissions-${{ github.event.inputs.tag }}
           path: notarization-output

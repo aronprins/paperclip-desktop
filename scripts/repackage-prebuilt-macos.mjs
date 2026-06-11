@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const projectRoot = resolve(__dirname, "..");
-const rootPackageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
 
 const PRODUCT_NAME = "Paperclip Desktop";
 const APP_ID = "com.paperclipai.app";
@@ -16,6 +15,16 @@ const COPYRIGHT = "Copyright © 2026 Aron Prins";
 const OWNER = "aronprins";
 const REPO = "paperclip-desktop";
 const args = process.argv.slice(2);
+
+function readInstalledPackageVersion(name) {
+  const installed = JSON.parse(
+    readFileSync(join(projectRoot, "node_modules", ...name.split("/"), "package.json"), "utf8"),
+  );
+  if (typeof installed.version !== "string" || !installed.version) {
+    throw new Error(`Could not read installed version for ${name}.`);
+  }
+  return installed.version;
+}
 
 function takeOption(name) {
   const index = args.indexOf(name);
@@ -81,7 +90,7 @@ function buildConfig(arch, outputDir) {
         { x: 410, y: 220, type: "link", path: "/Applications" },
       ],
     },
-    electronVersion: rootPackageJson.devDependencies.electron.replace(/^[^\d]*/, ""),
+    electronVersion: readInstalledPackageVersion("electron"),
   };
 }
 

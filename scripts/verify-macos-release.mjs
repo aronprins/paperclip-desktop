@@ -7,6 +7,11 @@ const outputDir = resolve(process.argv[2] || "release/local-macos");
 const requireStapled = process.argv.includes("--require-stapled");
 const expectedIdentity = process.env.APPLE_CODESIGN_IDENTITY?.trim() || null;
 const expectedTeamId = process.env.APPLE_TEAM_ID?.trim() || null;
+if (!requireStapled && !expectedIdentity && !expectedTeamId) {
+  throw new Error(
+    "macOS release verification requires APPLE_CODESIGN_IDENTITY, APPLE_TEAM_ID, or --require-stapled.",
+  );
+}
 const MACH_O_MAGICS = new Set([
   "feedface",
   "cefaedfe",

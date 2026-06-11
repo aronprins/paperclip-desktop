@@ -10,7 +10,7 @@ import {
   type MenuItemConstructorOptions,
   type Session,
 } from "electron";
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -264,20 +264,7 @@ function resolveShellPath(): string {
     }
   }
 
-  let basePath = process.env.PATH ?? "";
-  try {
-    const userShell = process.env.SHELL || "/bin/zsh";
-    const shellPath = execSync(`${userShell} -lc 'echo $PATH'`, {
-      encoding: "utf8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (shellPath) {
-      basePath = shellPath;
-    }
-  } catch {
-    // ignore
-  }
+  const basePath = process.env.PATH ?? "";
 
   const existing = new Set(basePath.split(path.delimiter));
   const missing = fallbackDirs.filter((dir) => !existing.has(dir));
@@ -943,18 +930,26 @@ async function bootLocal(options: {
   const bootId = ++bootSequence;
   stopLocalServerMonitor();
 
-  if (!options.forceRestart && currentConnection?.mode === "local_embedded" && mainWindow && !mainWindow.isDestroyed()) {
-    connectionStore.recordConnectionResult(LOCAL_PROFILE_ID);
-    if (options.rememberChoiceExplicit) {
-      connectionStore.setRememberedProfile(
-        LOCAL_PROFILE_ID,
-        options.rememberChoice === true,
-      );
+  if (!options.forceRestart && currentConnection?.mode === "local_embedded") {
+    const health = await probeLocalServerHealth({
+      origin: currentConnection.allowedOrigin,
+      timeoutMs: LOCAL_SERVER_HEALTH_TIMEOUT_MS,
+    });
+    const reopened = health.ok ? await reopenCurrentConnectionWindow() : false;
+    if (!reopened) {
+      console.warn(`Local connection reuse failed; restarting embedded server. ${health.detail ?? ""}`);
+    } else {
+      connectionStore.recordConnectionResult(LOCAL_PROFILE_ID);
+      if (options.rememberChoiceExplicit) {
+        connectionStore.setRememberedProfile(
+          LOCAL_PROFILE_ID,
+          options.rememberChoice === true,
+        );
+      }
+      sendLauncherState();
+      closeLauncherWindow();
+      return;
     }
-    sendLauncherState();
-    closeLauncherWindow();
-    mainWindow.focus();
-    return;
   }
 
   const previousConnectionMode = currentConnection?.mode ?? null;
@@ -1058,19 +1053,28 @@ async function bootLocal(options: {
       return;
     }
 
+    const startUrl = `http://localhost:${serverPort}`;
+    const startOrigin = new URL(startUrl).origin;
+    const health = await probeLocalServerHealth({
+      origin: startOrigin,
+      timeoutMs: LOCAL_SERVER_HEALTH_TIMEOUT_MS,
+    });
+    if (!health.ok) {
+      throw new Error(`Embedded Paperclip health check failed: ${health.detail ?? "unknown health failure"}`);
+    }
+
     sendBootStatus("server", "Server is ready", 70);
     sendBootStatus("ready", "Loading the UI...", 80);
 
-    const startUrl = `http://localhost:${serverPort}`;
     const window = createMainWindow({
       mode: "local_embedded",
       startUrl,
-      allowedOrigin: new URL(startUrl).origin,
+      allowedOrigin: startOrigin,
       partition: localPartition(),
       preloadPath: path.join(__dirname, "preload.js"),
     });
 
-    await resetLocalEmbeddedUiSession(new URL(startUrl).origin, window.webContents.session);
+    await resetLocalEmbeddedUiSession(startOrigin, window.webContents.session);
     await window.loadURL(startUrl);
     if (bootId !== bootSequence) {
       window.destroy();
@@ -1093,7 +1097,7 @@ async function bootLocal(options: {
       mode: "local_embedded",
       profileId: LOCAL_PROFILE_ID,
       startUrl,
-      allowedOrigin: new URL(startUrl).origin,
+      allowedOrigin: startOrigin,
       partition: localPartition(),
     };
     connectionStore.recordConnectionResult(LOCAL_PROFILE_ID);
@@ -1106,7 +1110,7 @@ async function bootLocal(options: {
     sendLauncherState();
 
     sendBootStatus("ready", "Ready!", 100);
-    startLocalServerMonitor(new URL(startUrl).origin);
+    startLocalServerMonitor(startOrigin);
     closeLauncherWindow();
     initAutoUpdater(window);
   } catch (error) {

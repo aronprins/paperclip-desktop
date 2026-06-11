@@ -79,7 +79,11 @@ function collectAssets(inputDir, mode) {
 function getRelease(tag) {
   const result = runGh(["release", "view", tag, "--json", "isDraft,url"], { allowFailure: true });
   if (result.status !== 0) {
-    return null;
+    const stderr = (result.stderr || "").trim();
+    if (/not found|release not found/i.test(stderr)) {
+      return null;
+    }
+    throw new Error(stderr || `gh release view ${tag} failed with exit code ${result.status ?? "unknown"}.`);
   }
   return JSON.parse(result.stdout);
 }

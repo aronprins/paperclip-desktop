@@ -89,6 +89,37 @@ test("preserves an unreadable connections file instead of clobbering it (PD-042)
   assert.equal(fs.existsSync(`${filePath}.bak`), true);
 });
 
+test("backs up newer-version connections files instead of downgrading them (PD-051)", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-future-"));
+  const filePath = getConnectionsFilePath(tempDir);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({
+      version: 2,
+      state: { alwaysShowChooser: false, autoConnectLastProfile: true },
+      remoteProfiles: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          mode: "remote_existing",
+          remoteUrl: "https://future.example.com",
+          futureOnlyField: "preserve-me",
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const store = new ConnectionStore(filePath);
+  store.setChooserMode("local_embedded"); // triggers a persist()
+
+  assert.equal(fs.existsSync(`${filePath}.bak`), true);
+  const backup = JSON.parse(fs.readFileSync(`${filePath}.bak`, "utf8"));
+  assert.equal(backup.version, 2);
+  assert.equal(backup.remoteProfiles[0].futureOnlyField, "preserve-me");
+  assert.deepEqual(store.getSnapshot().remoteProfiles, []);
+});
+
 test("connection store keeps a synthetic local profile", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-local-"));
   const store = new ConnectionStore(getConnectionsFilePath(tempDir));
@@ -139,4 +170,41 @@ test("connection store requires explicit acknowledgement before saving an HTTP p
   const reloaded = new ConnectionStore(getConnectionsFilePath(tempDir));
   const saved = reloaded.getProfile(profile.id);
   assert.equal(saved.allowInsecureHttp, true);
+});
+
+test("connection store preserves HTTP consent invariant on remote health updates", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperclip-http-health-"));
+  const store = new ConnectionStore(getConnectionsFilePath(tempDir));
+
+  const secureProfile = store.saveRemoteProfile({
+    name: "Secure",
+    remoteUrl: "https://paperclip.example.com",
+  });
+  const insecureResult = {
+    ok: true,
+    normalizedUrl: "http://paperclip.example.com/",
+    origin: "http://paperclip.example.com",
+    insecureTransport: true,
+    paperclipDetected: true,
+    deploymentMode: "authenticated",
+    deploymentExposure: "public",
+    authReady: true,
+    bootstrapStatus: null,
+    bootstrapInviteActive: null,
+    sessionState: "signed_out",
+    version: "2026.609.0",
+  };
+
+  assert.throws(
+    () => store.recordRemoteHealth(secureProfile.id, insecureResult),
+    /allow an insecure connection/i,
+  );
+
+  const insecureProfile = store.saveRemoteProfile({
+    name: "Insecure",
+    remoteUrl: "http://paperclip.example.com",
+    allowInsecureHttp: true,
+  });
+  store.recordRemoteHealth(insecureProfile.id, insecureResult);
+  assert.equal(store.getProfile(insecureProfile.id).allowInsecureHttp, true);
 });

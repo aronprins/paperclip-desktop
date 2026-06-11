@@ -578,12 +578,24 @@ Fixed in this pass (build + 52 unit tests green; new tests added for the securit
 - **Release gates / CI:** PD-021 (missing embedded server bundle now fails verification), PD-022 (notarization fails closed unless `ALLOW_UNNOTARIZED_MACOS_BUILD=true`), PD-030 (workflow_dispatch inputs routed through step `env:` + tag validation in all three workflows), plus a new `ci.yml` (build + unit tests on PR/push).
 - **Strictness:** PD-038 (added `noImplicitOverride`, `noFallthroughCasesInSwitch`).
 
+### 2026-06-11 — follow-up branch scan
+
+Fixed in this pass (`pnpm audit --audit-level moderate`, build, 54 unit tests, script syntax checks, and diff whitespace checks green):
+
+- **Dependency audit:** added patched transitive overrides for current `pnpm audit` findings (`tar`, `undici`, `fast-uri`, `better-auth`, `ws`, `@anthropic-ai/sdk`, `@tootallnate/once`, `qs`, `tmp`, `hono`, `kysely`, `brace-expansion` 5.x).
+- **Electron/main runtime:** PD-004 (removed login-shell PATH probing), PD-007 (reuses the current local server/window instead of double-spawning), and partially mitigated PD-003 by requiring local `/api/health` to pass before loading the embedded server origin.
+- **Connection store:** PD-045 (remote health/result updates can no longer grant insecure-HTTP consent to themselves) and PD-051 (newer `connections.json` versions are backed up instead of downgraded in place).
+- **Updater consent:** PD-047/PD-048 (scheduled checks no longer auto-download, updates no longer auto-install on app quit after "Later", and staged update state is not cleared before `quitAndInstall()`).
+- **Build/release scripts:** PD-023 (removed shell-string cleanup/download/extract/clone/build commands from the edited release paths), PD-024 (verifier now requires expected identity/team or stapling), PD-025 (packaging uses installed Electron version), PD-026 (repo-contained output roots unless `--allow-external-output` is explicit), PD-027 (Finder duplicate removal now requires an original sibling), PD-029 (GitHub release lookup only treats actual not-found as missing).
+- **CI/release workflows:** PD-031 (active actions pinned to commit SHAs plus Dependabot actions updates), PD-034 (default release workflow token is read-only; publish job alone gets `contents: write`), PD-037 (notarization submit requires exactly one x64 and one arm64 ZIP).
+
 Deferred (noted, not in this PR):
 
 - PD-017/PD-018/PD-019/PD-020 — require a committed staging lockfile / pinned upstream commit SHA (needs a reviewed manifest, out of scope for a code-only patch).
-- PD-031 — SHA-pinning actions needs the resolved commit SHAs + Dependabot config.
 - PD-032 — entitlement tightening needs a notarized test build to validate.
 - PD-038 `noUncheckedIndexedAccess` — broad fallout into unrelated window-sizing code; deferred to keep this diff focused.
-- PD-003/PD-004/PD-007, PD-023–PD-029, PD-033–PD-037, PD-039 (remaining), PD-045/PD-047/PD-048/PD-051 — lower-priority; tracked here for a follow-up pass.
-
-
+- PD-003 full child identity — needs a server-supported startup token/handshake; this pass verifies health before load but cannot prove process identity alone.
+- PD-028 — replacing the hand-rolled YAML parser and recomputing release manifest sha512s needs a focused release-manifest parser change.
+- PD-033 — dormant disabled workflow remains documented but is not executable.
+- PD-035/PD-036 — remaining release-policy workflow hardening; tracked for a follow-up pass.
+- PD-039 (remaining) — broader release-script test coverage gaps.

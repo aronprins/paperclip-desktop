@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, isAbsolute, relative } from "node:path";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -24,6 +24,21 @@ function requireOption(name) {
     throw new Error(`Missing required option ${name}.`);
   }
   return value;
+}
+
+function hasFlag(name) {
+  return args.includes(name);
+}
+
+function assertRepoContainedOutput(targetPath, optionName) {
+  const relativePath = relative(projectRoot, targetPath);
+  const insideProject = relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+  if (!insideProject && !hasFlag("--allow-external-output")) {
+    throw new Error(
+      `${optionName} must resolve inside the project directory. ` +
+      "Pass --allow-external-output to intentionally write elsewhere.",
+    );
+  }
 }
 
 function parseOptionalPercentage(name) {
@@ -338,9 +353,12 @@ export function prepareMacosReleaseAssets({ inputRoot, outputDir, stagingPercent
 }
 
 function main() {
+  const outputDir = requireOption("--output-dir");
+  assertRepoContainedOutput(resolve(projectRoot, outputDir), "--output-dir");
+
   prepareMacosReleaseAssets({
     inputRoot: requireOption("--input-root"),
-    outputDir: requireOption("--output-dir"),
+    outputDir,
     stagingPercentage: parseOptionalPercentage("--staging-percentage"),
   });
 }
