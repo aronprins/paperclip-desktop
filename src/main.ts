@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  crashReporter,
   dialog,
   ipcMain,
   Menu,
@@ -57,6 +58,8 @@ const POLL_INTERVAL_MS = 400;
 const PID_FILE_NAME = "paperclip-electron.pid";
 const LOCAL_SERVER_HEALTH_POLL_INTERVAL_MS = 30_000;
 const LOCAL_SERVER_HEALTH_TIMEOUT_MS = 5_000;
+const SERVER_LOG_MAX_BYTES = 20 * 1024 * 1024;
+const SERVER_LOG_ARCHIVE_KEEP = 5;
 
 // ---------------------------------------------------------------------------
 // Process-global state
@@ -95,6 +98,36 @@ type BootStep = "init" | "database" | "server" | "ready";
 
 app.setName("Paperclip");
 applyDesktopUserDataOverride(app, process.env);
+
+// Capture native crashes locally (no upload) so segfaults that bypass the
+// macOS crash reporter still leave evidence in app.getPath("crashDumps").
+crashReporter.start({ uploadToServer: false });
+
+// A second app instance must never boot its own embedded server against the
+// same PAPERCLIP_HOME/postgres data dir — focus the existing instance instead.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+      return;
+    }
+
+    if (launcherWindow && !launcherWindow.isDestroyed()) {
+      launcherWindow.show();
+      launcherWindow.focus();
+      return;
+    }
+
+    void ensureLauncherWindow("chooser");
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Paths and version helpers
@@ -311,6 +344,34 @@ function killOrphanedServer(): void {
   }
 
   cleanupPidFile();
+}
+
+function rotateServerLogIfLarge(logFile: string): void {
+  try {
+    const stats = fs.statSync(logFile);
+    if (stats.size < SERVER_LOG_MAX_BYTES) {
+      return;
+    }
+
+    const archiveDir = path.join(path.dirname(logFile), "log-archive");
+    fs.mkdirSync(archiveDir, { recursive: true });
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace("T", "-")
+      .slice(0, 15);
+    fs.renameSync(logFile, path.join(archiveDir, `server.log.${stamp}`));
+
+    const archives = fs
+      .readdirSync(archiveDir)
+      .filter((name) => name.startsWith("server.log."))
+      .sort();
+    for (const stale of archives.slice(0, Math.max(0, archives.length - SERVER_LOG_ARCHIVE_KEEP))) {
+      fs.unlinkSync(path.join(archiveDir, stale));
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function resolvePaperclipHome(): string {
@@ -932,6 +993,7 @@ async function bootLocal(options: {
     trackServerProcess(nextServerProcess);
 
     const logFile = path.join(app.getPath("userData"), "server.log");
+    rotateServerLogIfLarge(logFile);
     const logStream = fs.createWriteStream(logFile, { flags: "a" });
     logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
 
@@ -1526,6 +1588,10 @@ function remoteErrorTitle(result: RemotePreflightResult): string {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
+
   const paperclipHome = resolvePaperclipHome();
   assertIsolatedRuntimePaths({
     env: process.env,
