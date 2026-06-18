@@ -28,46 +28,14 @@ const projectRoot = path.resolve(__dirname, "..");
 const stagingRootDir = path.join(projectRoot, "build", "server-staging");
 const bundleRootDir = path.join(projectRoot, "build", "server-bundle");
 
-function firstExistingPath(paths) {
-  for (const candidate of paths) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function resolveLocalSkillsCatalogSource() {
-  const envRoot = process.env.PAPERCLIP_MONOREPO_ROOT?.trim();
-  const repoCandidates = [
-    ...(envRoot ? [path.resolve(envRoot)] : []),
-    path.resolve(projectRoot, "..", "paperclip-fork"),
-    path.resolve(projectRoot, "..", "paperclip-upstream"),
-    path.resolve(projectRoot, "..", "paperclip-development"),
-  ];
-  for (const repoRoot of repoCandidates) {
-    const packageDir = path.join(repoRoot, "packages", "skills-catalog");
-    const generatedCatalog = path.join(packageDir, "generated", "catalog.json");
-    if (existsSync(generatedCatalog)) {
-      return { repoRoot, packageDir, generatedCatalog };
-    }
-  }
-  return null;
-}
-
-const localSkillsCatalogSource = resolveLocalSkillsCatalogSource();
-if (localSkillsCatalogSource) {
-  console.log(`[prepare-server] Using local skills catalog source: ${localSkillsCatalogSource.packageDir}`);
-}
-
 const projectPkg = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 const serverVersion = projectPkg.devDependencies["@paperclipai/server"];
-const skillsCatalogVersion = serverVersion;
 if (!serverVersion) {
   console.error("[prepare-server] @paperclipai/server not found in devDependencies");
   process.exit(1);
 }
 
 console.log(`[prepare-server] Target server version: @paperclipai/server@${serverVersion}`);
-console.log(`[prepare-server] Target skills catalog version: @paperclipai/skills-catalog@${skillsCatalogVersion}`);
 
 const platform = process.platform;
 const nodePlatform = platform === "win32" ? "win32" : platform;
@@ -205,8 +173,6 @@ for (const arch of targetArches) {
   const stagingDir = path.join(stagingRootDir, variant);
   const bundleDir = path.join(bundleRootDir, variant);
   const bundleServerDir = path.join(bundleDir, "server");
-  const bundlePackagesDir = path.join(bundleDir, "packages");
-  const bundleSkillsCatalogDir = path.join(bundlePackagesDir, "skills-catalog");
 
   console.log(`[prepare-server] Installing runtime bundle for ${variant}...`);
 
@@ -216,10 +182,7 @@ for (const arch of targetArches) {
     JSON.stringify(
       {
         private: true,
-        dependencies: {
-          "@paperclipai/server": serverVersion,
-          ...(localSkillsCatalogSource ? {} : { "@paperclipai/skills-catalog": skillsCatalogVersion }),
-        },
+        dependencies: { "@paperclipai/server": serverVersion },
         overrides: {
           // cssstyle currently resolves a 5.x css-color release that trips
           // Node 22's ERR_REQUIRE_ASYNC_MODULE path in the packaged runtime.
@@ -249,7 +212,6 @@ for (const arch of targetArches) {
   mkdirSync(bundleServerDir, { recursive: true });
 
   const serverPkgDir = path.join(stagingDir, "node_modules", "@paperclipai", "server");
-  const skillsCatalogPkgDir = path.join(stagingDir, "node_modules", "@paperclipai", "skills-catalog");
 
   cpSync(path.join(serverPkgDir, "dist"), path.join(bundleServerDir, "dist"), { recursive: true });
   cpSync(path.join(serverPkgDir, "package.json"), path.join(bundleServerDir, "package.json"));
@@ -261,22 +223,6 @@ for (const arch of targetArches) {
 
   cpSync(path.join(stagingDir, "node_modules"), path.join(bundleServerDir, "node_modules"), { recursive: true });
   rmSync(path.join(bundleServerDir, "node_modules", ".bin"), { recursive: true, force: true });
-
-  mkdirSync(bundlePackagesDir, { recursive: true });
-  const resolvedSkillsCatalogSource = localSkillsCatalogSource?.packageDir ?? (existsSync(skillsCatalogPkgDir) ? skillsCatalogPkgDir : null);
-  if (resolvedSkillsCatalogSource) {
-    cpSync(resolvedSkillsCatalogSource, bundleSkillsCatalogDir, { recursive: true });
-  } else {
-    console.error(`[prepare-server] ERROR: @paperclipai/skills-catalog not found locally or at ${skillsCatalogPkgDir}`);
-    process.exit(1);
-  }
-
-  const generatedCatalogPath = path.join(bundleSkillsCatalogDir, "generated", "catalog.json");
-  if (!existsSync(generatedCatalogPath)) {
-    console.error(`[prepare-server] ERROR: skills catalog manifest missing at ${generatedCatalogPath}`);
-    process.exit(1);
-  }
-  console.log(`[prepare-server] Skills catalog manifest bundled: ${generatedCatalogPath}`);
 
   // The @paperclipai/server package currently ships with embedded-postgres 18.x
   // (beta), but existing data directories created by Docker or older Desktop
