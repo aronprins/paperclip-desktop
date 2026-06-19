@@ -38,6 +38,7 @@ import {
 import {
   isNavigationAllowed,
   localPartition,
+  newWindowPolicyAction,
   remotePartitionForProfile,
   shouldOpenExternally,
 } from "./connection/window-policy";
@@ -892,7 +893,10 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (shouldOpenExternally(url, allowedOrigin)) {
+    const action = newWindowPolicyAction(url, allowedOrigin);
+    if (action === "navigate-in-app") {
+      void win.webContents.loadURL(url);
+    } else if (action === "open-externally") {
       void shell.openExternal(url);
     }
     return { action: "deny" };
