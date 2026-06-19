@@ -11,7 +11,7 @@ import {
   type MenuItemConstructorOptions,
   type Session,
 } from "electron";
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -309,8 +309,10 @@ function resolveShellPath(): string {
 
   let basePath = process.env.PATH ?? "";
   try {
-    const userShell = process.env.SHELL || "/bin/zsh";
-    const shellPath = execSync(`${userShell} -lc 'echo $PATH'`, {
+    const userShell = process.env.SHELL && path.isAbsolute(process.env.SHELL)
+      ? process.env.SHELL
+      : "/bin/zsh";
+    const shellPath = execFileSync(userShell, ["-lc", "echo $PATH"], {
       encoding: "utf8",
       timeout: 5_000,
       stdio: ["ignore", "pipe", "ignore"],
