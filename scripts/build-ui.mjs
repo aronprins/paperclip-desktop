@@ -11,7 +11,7 @@
  * be simplified to just copy from node_modules.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, rmSync, cpSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,7 +58,7 @@ if (!serverVersion) {
 // ── Try to install @paperclipai/ui from npm first (future-proofing) ─────────
 
 try {
-  const uiVersion = execSync(`npm view @paperclipai/ui@${serverVersion} version`, {
+  const uiVersion = execFileSync("npm", ["view", `@paperclipai/ui@${serverVersion}`, "version"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 15000,
@@ -69,13 +69,15 @@ try {
     const uiStagingDir = path.join(projectRoot, "build", "ui-staging");
     if (existsSync(uiStagingDir)) rmSync(uiStagingDir, { recursive: true, force: true });
     mkdirSync(uiStagingDir, { recursive: true });
-    execSync(`npm pack @paperclipai/ui@${uiVersion} --pack-destination "${uiStagingDir}"`, { stdio: "inherit" });
+    execFileSync("npm", ["pack", `@paperclipai/ui@${uiVersion}`, "--pack-destination", uiStagingDir], {
+      stdio: "inherit",
+    });
     // Extract and copy dist/
     const tarballs = readdirSync(uiStagingDir)
       .filter((entry) => entry.endsWith(".tgz"))
       .map((entry) => path.join(uiStagingDir, entry));
     if (tarballs[0]) {
-      execSync(`tar -xzf "${tarballs[0]}" -C "${uiStagingDir}"`, { stdio: "inherit" });
+      execFileSync("tar", ["-xzf", tarballs[0], "-C", uiStagingDir], { stdio: "inherit" });
       const uiDist = path.join(uiStagingDir, "package", "dist");
       if (existsSync(path.join(uiDist, "index.html"))) {
         copyUiDistToBundles(uiDist);
@@ -104,8 +106,9 @@ let cloneSuccess = false;
 for (const tag of tagCandidates) {
   try {
     console.log(`[build-ui] Cloning upstream at tag ${tag}...`);
-    execSync(
-      `git clone --depth 1 --branch "${tag}" https://github.com/paperclipai/paperclip.git "${cloneDir}"`,
+    execFileSync(
+      "git",
+      ["clone", "--depth", "1", "--branch", tag, "https://github.com/paperclipai/paperclip.git", cloneDir],
       { stdio: "inherit", timeout: 120000 },
     );
     cloneSuccess = true;
@@ -124,10 +127,10 @@ if (!cloneSuccess) {
 // ── Install dependencies and build UI ───────────────────────────────────────
 
 console.log("[build-ui] Installing upstream dependencies...");
-execSync("pnpm install --frozen-lockfile", { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
 
 console.log("[build-ui] Building UI...");
-execSync("pnpm --filter @paperclipai/ui build", { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+execFileSync("pnpm", ["--filter", "@paperclipai/ui", "build"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
 
 // ── Copy UI dist to server bundle ───────────────────────────────────────────
 

@@ -55,6 +55,65 @@ function removeBrokenSymlinks(dir) {
   }
 }
 
+function walkBundleEntries(dir, visit) {
+  if (!existsSync(dir)) return;
+
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    let stat;
+
+    try {
+      stat = lstatSync(full);
+    } catch {
+      continue;
+    }
+
+    visit(full, entry, stat);
+
+    if (!stat.isSymbolicLink() && stat.isDirectory()) {
+      walkBundleEntries(full, visit);
+    }
+  }
+}
+
+function removeFinderMetadata(root) {
+  walkBundleEntries(root, (full, entry) => {
+    if (entry === ".DS_Store" || entry.startsWith("._")) {
+      rmSync(full, { force: true });
+    }
+  });
+}
+
+function clearExtendedAttributeBatch(paths) {
+  if (paths.length === 0) {
+    return;
+  }
+
+  try {
+    execFileSync("xattr", ["-c", ...paths], { stdio: "ignore" });
+  } catch {
+    // Best effort only.
+  }
+}
+
+function clearExtendedAttributes(root) {
+  let batch = [root];
+
+  walkBundleEntries(root, (full, _entry, stat) => {
+    if (stat.isSymbolicLink()) {
+      return;
+    }
+
+    batch.push(full);
+    if (batch.length >= 100) {
+      clearExtendedAttributeBatch(batch);
+      batch = [];
+    }
+  });
+
+  clearExtendedAttributeBatch(batch);
+}
+
 function stripBundleMetadata(appPath) {
   removeBrokenSymlinks(join(appPath, "Contents"));
 
@@ -64,8 +123,8 @@ function stripBundleMetadata(appPath) {
     // Best effort only.
   }
 
-  execFileSync("sh", ["-c", `find "${appPath}" -name "._*" -delete 2>/dev/null; find "${appPath}" -name ".DS_Store" -delete 2>/dev/null; true`]);
-  execFileSync("sh", ["-c", `find "${appPath}" ! -type l -print0 | xargs -0 -n 200 xattr -c 2>/dev/null; true`]);
+  removeFinderMetadata(appPath);
+  clearExtendedAttributes(appPath);
 }
 
 function dereferenceSymlinks(dir) {

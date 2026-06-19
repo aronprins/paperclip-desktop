@@ -6,7 +6,7 @@
  * into the app.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -33,6 +33,13 @@ if (!serverVersion) {
   console.error("[prepare-server] @paperclipai/server not found in devDependencies");
   process.exit(1);
 }
+
+const serverBundleOverrides = {
+  ...(projectPkg.pnpm?.overrides ?? {}),
+  // cssstyle currently resolves a 5.x css-color release that trips
+  // Node 22's ERR_REQUIRE_ASYNC_MODULE path in the packaged runtime.
+  "@asamuzakjp/css-color": "4.1.2",
+};
 
 console.log(`[prepare-server] Target server version: @paperclipai/server@${serverVersion}`);
 
@@ -169,19 +176,16 @@ for (const arch of targetArches) {
       {
         private: true,
         dependencies: { "@paperclipai/server": serverVersion },
-        overrides: {
-          // cssstyle currently resolves a 5.x css-color release that trips
-          // Node 22's ERR_REQUIRE_ASYNC_MODULE path in the packaged runtime.
-          "@asamuzakjp/css-color": "4.1.2",
-        },
+        overrides: serverBundleOverrides,
       },
       null,
       2,
     ),
   );
 
-  execSync(
-    `npm install --production --os=${nodePlatform} --cpu=${arch} --arch=${arch}`,
+  execFileSync(
+    "npm",
+    ["install", "--production", `--os=${nodePlatform}`, `--cpu=${arch}`, `--arch=${arch}`],
     {
       cwd: stagingDir,
       stdio: "inherit",
@@ -251,17 +255,29 @@ for (const arch of arches) {
   console.log(`[prepare-server] Downloading Node ${NODE_VERSION} for ${nodeDownloadPlatform}-${arch}...`);
 
   if (platform === "win32") {
-    execSync(`powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${archivePath}'"`, { stdio: "inherit" });
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", "Invoke-WebRequest -Uri $args[0] -OutFile $args[1]", url, archivePath],
+      { stdio: "inherit" },
+    );
   } else {
-    execSync(`curl -fsSL -o "${archivePath}" "${url}"`, { stdio: "inherit" });
+    execFileSync("curl", ["-fsSL", "-o", archivePath, url], { stdio: "inherit" });
   }
 
   if (platform === "win32") {
-    execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: "inherit" });
+    execFileSync(
+      "powershell",
+      ["-NoProfile", "-Command", "Expand-Archive -Path $args[0] -DestinationPath $args[1] -Force", archivePath, destDir],
+      { stdio: "inherit" },
+    );
     cpSync(path.join(destDir, archiveName, "node.exe"), destBin);
     rmSync(path.join(destDir, archiveName), { recursive: true, force: true });
   } else {
-    execSync(`tar -xzf "${archivePath}" -C "${destDir}" --strip-components=2 "${archiveName}/bin/node"`, { stdio: "inherit" });
+    execFileSync(
+      "tar",
+      ["-xzf", archivePath, "-C", destDir, "--strip-components=2", `${archiveName}/bin/node`],
+      { stdio: "inherit" },
+    );
   }
 
   rmSync(archivePath, { force: true });

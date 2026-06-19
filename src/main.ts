@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  crashReporter,
   dialog,
   ipcMain,
   Menu,
@@ -10,7 +11,7 @@ import {
   type MenuItemConstructorOptions,
   type Session,
 } from "electron";
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -57,6 +58,10 @@ const POLL_INTERVAL_MS = 400;
 const PID_FILE_NAME = "paperclip-electron.pid";
 const LOCAL_SERVER_HEALTH_POLL_INTERVAL_MS = 30_000;
 const LOCAL_SERVER_HEALTH_TIMEOUT_MS = 5_000;
+const SERVER_LOG_MAX_BYTES = 20 * 1024 * 1024;
+const SERVER_LOG_ARCHIVE_KEEP = 5;
+const SERVER_LOG_ARCHIVE_PREFIX = "server.log.";
+const SERVER_LOG_UNSAFE_PREFIX = "server.log.unsafe.";
 
 // ---------------------------------------------------------------------------
 // Process-global state
@@ -70,6 +75,8 @@ let launcherPresentation: LauncherPresentation = "standalone";
 let isQuitting = false;
 let bootSequence = 0;
 let launcherView: LauncherView = "chooser";
+let appStartupReadyForFocus = false;
+let pendingSecondInstanceFocus = false;
 let localServerMonitorTimer: ReturnType<typeof setInterval> | null = null;
 let localServerHealthCheckInFlight = false;
 let localServerFailureDialogOpen = false;
@@ -95,6 +102,53 @@ type BootStep = "init" | "database" | "server" | "ready";
 
 app.setName("Paperclip");
 applyDesktopUserDataOverride(app, process.env);
+
+// Capture native crashes locally (no upload) so segfaults that bypass the
+// macOS crash reporter still leave evidence in app.getPath("crashDumps").
+crashReporter.start({ uploadToServer: false });
+
+function focusExistingInstanceWindow(): void {
+  if (!appStartupReadyForFocus) {
+    pendingSecondInstanceFocus = true;
+    return;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
+  if (launcherWindow && !launcherWindow.isDestroyed()) {
+    launcherWindow.show();
+    launcherWindow.focus();
+    return;
+  }
+
+  void ensureLauncherWindow("chooser");
+}
+
+function markAppStartupReadyForFocus(): void {
+  appStartupReadyForFocus = true;
+  if (!pendingSecondInstanceFocus) {
+    return;
+  }
+
+  pendingSecondInstanceFocus = false;
+  focusExistingInstanceWindow();
+}
+
+// A second app instance must never boot its own embedded server against the
+// same PAPERCLIP_HOME/postgres data dir — focus the existing instance instead.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", focusExistingInstanceWindow);
+}
 
 // ---------------------------------------------------------------------------
 // Paths and version helpers
@@ -257,8 +311,10 @@ function resolveShellPath(): string {
 
   let basePath = process.env.PATH ?? "";
   try {
-    const userShell = process.env.SHELL || "/bin/zsh";
-    const shellPath = execSync(`${userShell} -lc 'echo $PATH'`, {
+    const userShell = process.env.SHELL && path.isAbsolute(process.env.SHELL)
+      ? process.env.SHELL
+      : "/bin/zsh";
+    const shellPath = execFileSync(userShell, ["-lc", "echo $PATH"], {
       encoding: "utf8",
       timeout: 5_000,
       stdio: ["ignore", "pipe", "ignore"],
@@ -311,6 +367,82 @@ function killOrphanedServer(): void {
   }
 
   cleanupPidFile();
+}
+
+function serverLogArchiveDir(logFile: string): string {
+  return path.join(path.dirname(logFile), "log-archive");
+}
+
+function serverLogArchivePath(logFile: string, prefix: string): string {
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "-")
+    .replace(".", "-");
+  return path.join(serverLogArchiveDir(logFile), `${prefix}${stamp}.${randomUUID()}`);
+}
+
+function archiveServerLogPath(logFile: string, prefix: string = SERVER_LOG_ARCHIVE_PREFIX): void {
+  const archiveDir = serverLogArchiveDir(logFile);
+  fs.mkdirSync(archiveDir, { recursive: true });
+  fs.renameSync(logFile, serverLogArchivePath(logFile, prefix));
+}
+
+function quarantineUnsafeServerLogPath(logFile: string): void {
+  try {
+    const stats = fs.lstatSync(logFile);
+    if (stats.isFile()) {
+      return;
+    }
+
+    archiveServerLogPath(logFile, SERVER_LOG_UNSAFE_PREFIX);
+  } catch {
+    // ignore
+  }
+}
+
+function pruneServerLogArchives(logFile: string): void {
+  try {
+    const archiveDir = serverLogArchiveDir(logFile);
+    const archives = fs
+      .readdirSync(archiveDir)
+      .filter((name) => {
+        if (!name.startsWith(SERVER_LOG_ARCHIVE_PREFIX)) {
+          return false;
+        }
+
+        try {
+          return fs.lstatSync(path.join(archiveDir, name)).isFile();
+        } catch {
+          return false;
+        }
+      })
+      .sort();
+
+    for (const stale of archives.slice(0, Math.max(0, archives.length - SERVER_LOG_ARCHIVE_KEEP))) {
+      fs.unlinkSync(path.join(archiveDir, stale));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function rotateServerLogIfLarge(logFile: string): void {
+  try {
+    const stats = fs.lstatSync(logFile);
+    if (!stats.isFile()) {
+      return;
+    }
+
+    if (stats.size < SERVER_LOG_MAX_BYTES) {
+      return;
+    }
+
+    archiveServerLogPath(logFile);
+    pruneServerLogArchives(logFile);
+  } catch {
+    // ignore
+  }
 }
 
 function resolvePaperclipHome(): string {
@@ -932,6 +1064,8 @@ async function bootLocal(options: {
     trackServerProcess(nextServerProcess);
 
     const logFile = path.join(app.getPath("userData"), "server.log");
+    quarantineUnsafeServerLogPath(logFile);
+    rotateServerLogIfLarge(logFile);
     const logStream = fs.createWriteStream(logFile, { flags: "a" });
     logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
 
@@ -1526,6 +1660,10 @@ function remoteErrorTitle(result: RemotePreflightResult): string {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
+
   const paperclipHome = resolvePaperclipHome();
   assertIsolatedRuntimePaths({
     env: process.env,
@@ -1544,6 +1682,7 @@ app.whenReady().then(async () => {
   if (startupProfileId) {
     if (startupProfileId === LOCAL_PROFILE_ID) {
       await ensureLauncherWindow("local-boot");
+      markAppStartupReadyForFocus();
       void bootLocal();
       return;
     }
@@ -1554,6 +1693,7 @@ app.whenReady().then(async () => {
         label: "Opening verified remote...",
         url: profile.remoteUrl,
       });
+      markAppStartupReadyForFocus();
       void bootSavedProfile(startupProfileId);
       return;
     }
@@ -1561,9 +1701,15 @@ app.whenReady().then(async () => {
 
   connectionStore.setChooserMode("local_embedded");
   await ensureLauncherWindow("chooser");
+  markAppStartupReadyForFocus();
 });
 
 app.on("activate", () => {
+  if (!appStartupReadyForFocus) {
+    pendingSecondInstanceFocus = true;
+    return;
+  }
+
   if (launcherWindow && !launcherWindow.isDestroyed()) {
     launcherWindow.show();
     launcherWindow.focus();
