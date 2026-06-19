@@ -73,6 +73,8 @@ let launcherPresentation: LauncherPresentation = "standalone";
 let isQuitting = false;
 let bootSequence = 0;
 let launcherView: LauncherView = "chooser";
+let appStartupReadyForFocus = false;
+let pendingSecondInstanceFocus = false;
 let localServerMonitorTimer: ReturnType<typeof setInterval> | null = null;
 let localServerHealthCheckInFlight = false;
 let localServerFailureDialogOpen = false;
@@ -103,30 +105,47 @@ applyDesktopUserDataOverride(app, process.env);
 // macOS crash reporter still leave evidence in app.getPath("crashDumps").
 crashReporter.start({ uploadToServer: false });
 
+function focusExistingInstanceWindow(): void {
+  if (!appStartupReadyForFocus) {
+    pendingSecondInstanceFocus = true;
+    return;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
+  if (launcherWindow && !launcherWindow.isDestroyed()) {
+    launcherWindow.show();
+    launcherWindow.focus();
+    return;
+  }
+
+  void ensureLauncherWindow("chooser");
+}
+
+function markAppStartupReadyForFocus(): void {
+  appStartupReadyForFocus = true;
+  if (!pendingSecondInstanceFocus) {
+    return;
+  }
+
+  pendingSecondInstanceFocus = false;
+  focusExistingInstanceWindow();
+}
+
 // A second app instance must never boot its own embedded server against the
 // same PAPERCLIP_HOME/postgres data dir — focus the existing instance instead.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-      mainWindow.show();
-      mainWindow.focus();
-      return;
-    }
-
-    if (launcherWindow && !launcherWindow.isDestroyed()) {
-      launcherWindow.show();
-      launcherWindow.focus();
-      return;
-    }
-
-    void ensureLauncherWindow("chooser");
-  });
+  app.on("second-instance", focusExistingInstanceWindow);
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,6 +1629,7 @@ app.whenReady().then(async () => {
   if (startupProfileId) {
     if (startupProfileId === LOCAL_PROFILE_ID) {
       await ensureLauncherWindow("local-boot");
+      markAppStartupReadyForFocus();
       void bootLocal();
       return;
     }
@@ -1620,6 +1640,7 @@ app.whenReady().then(async () => {
         label: "Opening verified remote...",
         url: profile.remoteUrl,
       });
+      markAppStartupReadyForFocus();
       void bootSavedProfile(startupProfileId);
       return;
     }
@@ -1627,9 +1648,15 @@ app.whenReady().then(async () => {
 
   connectionStore.setChooserMode("local_embedded");
   await ensureLauncherWindow("chooser");
+  markAppStartupReadyForFocus();
 });
 
 app.on("activate", () => {
+  if (!appStartupReadyForFocus) {
+    pendingSecondInstanceFocus = true;
+    return;
+  }
+
   if (launcherWindow && !launcherWindow.isDestroyed()) {
     launcherWindow.show();
     launcherWindow.focus();
