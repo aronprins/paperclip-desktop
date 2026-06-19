@@ -91,10 +91,17 @@ try {
 
   await sleep(3_000);
   const secondBootedServer = /Server listening on|Using PAPERCLIP_HOME/.test(second.output);
+  const secondExitedCleanly = second.exited.code === 0 && second.exited.signal === null;
   const firstStillAlive = first.exitCode === null && !first.exited;
 
   if (secondBootedServer) {
     console.error("[dual-e2e] FAIL: second instance attempted to boot a server:\n" + second.output.slice(-2000));
+    failed = true;
+  } else if (!secondExitedCleanly) {
+    console.error(
+      `[dual-e2e] FAIL: second instance exited unexpectedly (code=${second.exited.code}, signal=${second.exited.signal}):\n`
+        + second.output.slice(-2000),
+    );
     failed = true;
   } else if (!firstStillAlive) {
     console.error("[dual-e2e] FAIL: first instance died after second launch");
