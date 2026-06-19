@@ -14,12 +14,17 @@ test("window policy only allows same-origin navigation", () => {
   const allowedOrigin = "https://paperclip-host.tailnet.ts.net";
   assert.equal(isNavigationAllowed("https://paperclip-host.tailnet.ts.net/dashboard", allowedOrigin), true);
   assert.equal(isNavigationAllowed("https://example.com", allowedOrigin), false);
+  assert.equal(
+    isNavigationAllowed("https://user:pass@paperclip-host.tailnet.ts.net/dashboard", allowedOrigin),
+    false,
+  );
 });
 
 test("window policy opens external http links outside the allowed origin", () => {
   const allowedOrigin = "http://localhost:3100";
   assert.equal(shouldOpenExternally("https://docs.paperclip.ing", allowedOrigin), true);
   assert.equal(shouldOpenExternally("http://localhost:3100/settings", allowedOrigin), false);
+  assert.equal(shouldOpenExternally("https://user:pass@docs.paperclip.ing", allowedOrigin), false);
   assert.equal(shouldOpenExternally("mailto:test@example.com", allowedOrigin), false);
 });
 
@@ -48,6 +53,8 @@ test("new-window policy opens different-origin http links externally", () => {
 
 test("new-window policy denies unsupported and malformed urls", () => {
   const allowedOrigin = "http://localhost:3100";
+  assert.equal(newWindowPolicyAction("http://user:pass@localhost:3100/settings", allowedOrigin), "deny");
+  assert.equal(newWindowPolicyAction("https://user:pass@example.com", allowedOrigin), "deny");
   assert.equal(newWindowPolicyAction("mailto:test@example.com", allowedOrigin), "deny");
   assert.equal(newWindowPolicyAction("file:///tmp/index.html", allowedOrigin), "deny");
   assert.equal(newWindowPolicyAction("not a url", allowedOrigin), "deny");

@@ -11,6 +11,10 @@ export interface WindowPolicy {
 export function isNavigationAllowed(targetUrl: string, allowedOrigin: string): boolean {
   try {
     const parsed = new URL(targetUrl);
+    if (hasEmbeddedCredentials(parsed)) {
+      return false;
+    }
+
     return parsed.origin === allowedOrigin;
   } catch {
     return false;
@@ -20,6 +24,10 @@ export function isNavigationAllowed(targetUrl: string, allowedOrigin: string): b
 export function shouldOpenExternally(targetUrl: string, allowedOrigin: string): boolean {
   try {
     const parsed = new URL(targetUrl);
+    if (hasEmbeddedCredentials(parsed)) {
+      return false;
+    }
+
     if (parsed.origin === allowedOrigin) {
       return false;
     }
@@ -35,6 +43,10 @@ export type NewWindowPolicyAction = "navigate-in-app" | "open-externally" | "den
 export function newWindowPolicyAction(targetUrl: string, allowedOrigin: string): NewWindowPolicyAction {
   try {
     const parsed = new URL(targetUrl);
+    if (hasEmbeddedCredentials(parsed)) {
+      return "deny";
+    }
+
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return "deny";
     }
@@ -47,6 +59,10 @@ export function newWindowPolicyAction(targetUrl: string, allowedOrigin: string):
   } catch {
     return "deny";
   }
+}
+
+function hasEmbeddedCredentials(parsed: URL): boolean {
+  return parsed.username !== "" || parsed.password !== "";
 }
 
 export function remotePartitionForProfile(profileId: string): string {
