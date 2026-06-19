@@ -895,7 +895,7 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
     const action = newWindowPolicyAction(url, allowedOrigin);
     if (action === "navigate-in-app") {
-      void win.webContents.loadURL(url);
+      void win.webContents.loadURL(url).catch(() => undefined);
     } else if (action === "open-externally") {
       void shell.openExternal(url);
     }
