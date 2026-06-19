@@ -34,6 +34,13 @@ if (!serverVersion) {
   process.exit(1);
 }
 
+const serverBundleOverrides = {
+  ...(projectPkg.pnpm?.overrides ?? {}),
+  // cssstyle currently resolves a 5.x css-color release that trips
+  // Node 22's ERR_REQUIRE_ASYNC_MODULE path in the packaged runtime.
+  "@asamuzakjp/css-color": "4.1.2",
+};
+
 console.log(`[prepare-server] Target server version: @paperclipai/server@${serverVersion}`);
 
 const platform = process.platform;
@@ -169,11 +176,7 @@ for (const arch of targetArches) {
       {
         private: true,
         dependencies: { "@paperclipai/server": serverVersion },
-        overrides: {
-          // cssstyle currently resolves a 5.x css-color release that trips
-          // Node 22's ERR_REQUIRE_ASYNC_MODULE path in the packaged runtime.
-          "@asamuzakjp/css-color": "4.1.2",
-        },
+        overrides: serverBundleOverrides,
       },
       null,
       2,
