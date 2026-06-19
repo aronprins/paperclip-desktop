@@ -84,18 +84,34 @@ function removeFinderMetadata(root) {
   });
 }
 
+function clearExtendedAttributeBatch(paths) {
+  if (paths.length === 0) {
+    return;
+  }
+
+  try {
+    execFileSync("xattr", ["-c", ...paths], { stdio: "ignore" });
+  } catch {
+    // Best effort only.
+  }
+}
+
 function clearExtendedAttributes(root) {
+  let batch = [root];
+
   walkBundleEntries(root, (full, _entry, stat) => {
     if (stat.isSymbolicLink()) {
       return;
     }
 
-    try {
-      execFileSync("xattr", ["-c", full], { stdio: "ignore" });
-    } catch {
-      // Best effort only.
+    batch.push(full);
+    if (batch.length >= 100) {
+      clearExtendedAttributeBatch(batch);
+      batch = [];
     }
   });
+
+  clearExtendedAttributeBatch(batch);
 }
 
 function stripBundleMetadata(appPath) {
