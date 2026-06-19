@@ -1961,7 +1961,15 @@ function escapeAttr(value) {
 }
 
 function escapeJsSingleQuote(value) {
-  return String(value).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  return escapeAttr(
+    String(value)
+      .replaceAll("\\", "\\\\")
+      .replaceAll("'", "\\'")
+      .replaceAll("\n", "\\n")
+      .replaceAll("\r", "\\r")
+      .replaceAll("\u2028", "\\u2028")
+      .replaceAll("\u2029", "\\u2029"),
+  );
 }
 
 function measureLauncherHeight(windowEl) {
