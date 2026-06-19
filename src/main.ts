@@ -877,7 +877,7 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
 
     event.preventDefault();
     if (shouldOpenExternally(targetUrl, allowedOrigin)) {
-      void shell.openExternal(targetUrl);
+      void shell.openExternal(targetUrl).catch(() => undefined);
     }
   });
 
@@ -888,7 +888,7 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
 
     event.preventDefault();
     if (shouldOpenExternally(targetUrl, allowedOrigin)) {
-      void shell.openExternal(targetUrl);
+      void shell.openExternal(targetUrl).catch(() => undefined);
     }
   });
 
@@ -897,7 +897,7 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
     if (action === "navigate-in-app") {
       void win.webContents.loadURL(url).catch(() => undefined);
     } else if (action === "open-externally") {
-      void shell.openExternal(url);
+      void shell.openExternal(url).catch(() => undefined);
     }
     return { action: "deny" };
   });
