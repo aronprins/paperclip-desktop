@@ -60,6 +60,8 @@ const LOCAL_SERVER_HEALTH_POLL_INTERVAL_MS = 30_000;
 const LOCAL_SERVER_HEALTH_TIMEOUT_MS = 5_000;
 const SERVER_LOG_MAX_BYTES = 20 * 1024 * 1024;
 const SERVER_LOG_ARCHIVE_KEEP = 5;
+const SERVER_LOG_ARCHIVE_PREFIX = "server.log.";
+const SERVER_LOG_UNSAFE_PREFIX = "server.log.unsafe.";
 
 // ---------------------------------------------------------------------------
 // Process-global state
@@ -367,29 +369,77 @@ function killOrphanedServer(): void {
   cleanupPidFile();
 }
 
+function serverLogArchiveDir(logFile: string): string {
+  return path.join(path.dirname(logFile), "log-archive");
+}
+
+function serverLogArchivePath(logFile: string, prefix: string): string {
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "-")
+    .replace(".", "-");
+  return path.join(serverLogArchiveDir(logFile), `${prefix}${stamp}.${randomUUID()}`);
+}
+
+function archiveServerLogPath(logFile: string, prefix: string = SERVER_LOG_ARCHIVE_PREFIX): void {
+  const archiveDir = serverLogArchiveDir(logFile);
+  fs.mkdirSync(archiveDir, { recursive: true });
+  fs.renameSync(logFile, serverLogArchivePath(logFile, prefix));
+}
+
+function quarantineUnsafeServerLogPath(logFile: string): void {
+  try {
+    const stats = fs.lstatSync(logFile);
+    if (stats.isFile()) {
+      return;
+    }
+
+    archiveServerLogPath(logFile, SERVER_LOG_UNSAFE_PREFIX);
+  } catch {
+    // ignore
+  }
+}
+
+function pruneServerLogArchives(logFile: string): void {
+  try {
+    const archiveDir = serverLogArchiveDir(logFile);
+    const archives = fs
+      .readdirSync(archiveDir)
+      .filter((name) => {
+        if (!name.startsWith(SERVER_LOG_ARCHIVE_PREFIX)) {
+          return false;
+        }
+
+        try {
+          return fs.lstatSync(path.join(archiveDir, name)).isFile();
+        } catch {
+          return false;
+        }
+      })
+      .sort();
+
+    for (const stale of archives.slice(0, Math.max(0, archives.length - SERVER_LOG_ARCHIVE_KEEP))) {
+      fs.unlinkSync(path.join(archiveDir, stale));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function rotateServerLogIfLarge(logFile: string): void {
   try {
-    const stats = fs.statSync(logFile);
+    const stats = fs.lstatSync(logFile);
+    if (!stats.isFile()) {
+      return;
+    }
+
     if (stats.size < SERVER_LOG_MAX_BYTES) {
       return;
     }
 
-    const archiveDir = path.join(path.dirname(logFile), "log-archive");
-    fs.mkdirSync(archiveDir, { recursive: true });
-    const stamp = new Date()
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace("T", "-")
-      .slice(0, 15);
-    fs.renameSync(logFile, path.join(archiveDir, `server.log.${stamp}`));
-
-    const archives = fs
-      .readdirSync(archiveDir)
-      .filter((name) => name.startsWith("server.log."))
-      .sort();
-    for (const stale of archives.slice(0, Math.max(0, archives.length - SERVER_LOG_ARCHIVE_KEEP))) {
-      fs.unlinkSync(path.join(archiveDir, stale));
-    }
+    archiveServerLogPath(logFile);
+    pruneServerLogArchives(logFile);
   } catch {
     // ignore
   }
@@ -1014,6 +1064,7 @@ async function bootLocal(options: {
     trackServerProcess(nextServerProcess);
 
     const logFile = path.join(app.getPath("userData"), "server.log");
+    quarantineUnsafeServerLogPath(logFile);
     rotateServerLogIfLarge(logFile);
     const logStream = fs.createWriteStream(logFile, { flags: "a" });
     logStream.write(`\n--- Server start ${new Date().toISOString()} (port=${serverPort}) ---\n`);
