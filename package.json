@@ -36,21 +36,38 @@
     "tree-kill": "^1.2.2"
   },
   "devDependencies": {
-    "@paperclipai/server": "2026.609.0",
+    "@paperclipai/server": "2026.618.0",
     "electron": "^41.7.2",
     "electron-builder": "^26.8.1",
     "typescript": "^5.7.3"
   },
   "pnpm": {
     "overrides": {
+      "@anthropic-ai/sdk": "0.91.1",
+      "@tootallnate/once": "2.0.1",
       "@xmldom/xmldom": "0.8.13",
+      "better-auth": "1.6.11",
       "brace-expansion@1.1.12": "1.1.13",
       "brace-expansion@2.0.2": "2.0.3",
+      "brace-expansion@5.0.5": "5.0.6",
       "defu": "6.1.7",
-      "dompurify": "3.4.2",
+      "dompurify": "3.4.11",
+      "esbuild": "0.28.1",
+      "fast-uri": "3.1.2",
       "fast-xml-parser": "5.7.3",
+      "form-data": "4.0.6",
+      "hono": "4.12.25",
+      "js-yaml": "4.2.0",
+      "kysely": "0.28.17",
       "lodash": "4.18.1",
-      "path-to-regexp": "8.4.2"
+      "multer": "2.2.0",
+      "path-to-regexp": "8.4.2",
+      "qs": "6.15.2",
+      "tar": "7.5.16",
+      "tmp": "0.2.7",
+      "undici@5.29.0": "6.24.0",
+      "undici@7.24.6": "7.28.0",
+      "ws": "8.21.0"
     },
     "onlyBuiltDependencies": [
       "@embedded-postgres/darwin-arm64",
