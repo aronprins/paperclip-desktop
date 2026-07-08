@@ -1,11 +1,13 @@
 allowBuilds:
   '@embedded-postgres/darwin-arm64': true
   '@embedded-postgres/darwin-x64': true
+  cpu-features: true
   electron: true
   electron-winstaller: true
   esbuild: true
   sharp: true
   sqlite3: true
+  ssh2: true
 overrides:
   '@anthropic-ai/sdk': 0.91.1
   '@tootallnate/once': 2.0.1
@@ -50,3 +52,20 @@ minimumReleaseAgeExclude:
   - '@paperclipai/server@2026.626.0'
   - '@paperclipai/shared@2026.626.0'
   - '@paperclipai/skills-catalog@2026.626.0'
+  - '@paperclipai/adapter-acpx-local@2026.707.0'
+  - '@paperclipai/adapter-claude-local@2026.707.0'
+  - '@paperclipai/adapter-codex-local@2026.707.0'
+  - '@paperclipai/adapter-cursor-cloud@2026.707.0'
+  - '@paperclipai/adapter-cursor-local@2026.707.0'
+  - '@paperclipai/adapter-gemini-local@2026.707.0'
+  - '@paperclipai/adapter-grok-local@2026.707.0'
+  - '@paperclipai/adapter-openclaw-gateway@2026.707.0'
+  - '@paperclipai/adapter-opencode-local@2026.707.0'
+  - '@paperclipai/adapter-pi-local@2026.707.0'
+  - '@paperclipai/adapter-utils@2026.707.0'
+  - '@paperclipai/db@2026.707.0'
+  - '@paperclipai/hermes-paperclip-adapter@2026.707.0'
+  - '@paperclipai/plugin-sdk@2026.707.0'
+  - '@paperclipai/server@2026.707.0'
+  - '@paperclipai/shared@2026.707.0'
+  - '@paperclipai/skills-catalog@2026.707.0'
