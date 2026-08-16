@@ -288,7 +288,6 @@ function parseHealthPayload(body: unknown): ParsedHealthPayload | null {
     deploymentMode === "authenticated" &&
     bootstrapStatus !== null &&
     bootstrapInviteActive !== null &&
-    deploymentExposure === null &&
     authReady === null;
 
   if (!status || !deploymentMode || (!hasFullHealthShape && !hasRedactedAuthenticatedShape)) {
