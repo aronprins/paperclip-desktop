@@ -129,6 +129,32 @@ test("preflight accepts redacted authenticated health with active Paperclip sess
   assert.equal(result.bootstrapInviteActive, true);
 });
 
+test("preflight accepts redacted authenticated health when deploymentExposure is present without authReady", async () => {
+  const responses = [
+    jsonResponse(
+      {
+        status: "ok",
+        deploymentMode: "authenticated",
+        deploymentExposure: "public",
+        bootstrapStatus: "ready",
+        bootstrapInviteActive: false,
+      },
+      200,
+    ),
+    authRequiredResponse(),
+  ];
+
+  const result = await preflightRemoteConnection({
+    remoteUrl: "https://paperclip-host.example.com",
+    fetchImpl: async () => responses.shift(),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.paperclipDetected, true);
+  assert.equal(result.sessionState, "signed_out");
+  assert.equal(result.deploymentExposure, "public");
+});
+
 test("preflight rejects redacted health with generic 401 session response", async () => {
   const responses = [
     jsonResponse(
