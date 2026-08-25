@@ -1,3 +1,6 @@
+packages:
+  - '.'
+
 allowBuilds:
   '@embedded-postgres/darwin-arm64': true
   '@embedded-postgres/darwin-x64': true
@@ -10,30 +13,38 @@ allowBuilds:
   ssh2: true
 overrides:
   '@anthropic-ai/sdk': 0.91.1
+  '@hono/node-server': 1.19.17
   '@tootallnate/once': 2.0.1
   '@xmldom/xmldom': 0.8.13
-  better-auth: 1.6.11
-  brace-expansion@1.1.12: 1.1.13
-  brace-expansion@2.0.2: 2.0.3
-  brace-expansion@5.0.5: 5.0.6
+  better-auth: 1.6.25
+  body-parser: 2.3.0
+  brace-expansion@1.1.12: 1.1.18
+  brace-expansion@1.1.13: 1.1.18
+  brace-expansion@2.0.2: 2.1.4
+  brace-expansion@2.0.3: 2.1.4
+  brace-expansion@5.0.5: 5.0.9
+  brace-expansion@5.0.6: 5.0.9
   defu: 6.1.7
-  dompurify: 3.4.11
+  dompurify: 3.4.14
   esbuild: 0.28.1
-  fast-uri: 3.1.2
+  fast-uri: 3.1.6
   fast-xml-parser: 5.7.3
   form-data: 4.0.6
-  hono: 4.12.25
-  js-yaml: 4.2.0
+  hono: 4.13.4
+  ip-address: 10.5.0
+  js-yaml: 4.3.1
   kysely: 0.28.17
   lodash: 4.18.1
   multer: 2.2.0
   path-to-regexp: 8.4.2
   qs: 6.15.2
-  tar: 7.5.16
+  tar: 7.5.22
   tmp: 0.2.7
-  undici@5.29.0: 6.24.0
-  undici@7.24.6: 7.28.0
-  ws: 8.21.0
+  undici@5.29.0: 6.28.0
+  undici@6.25.0: 6.28.0
+  undici@7.24.6: 7.29.0
+  undici@7.28.0: 7.29.0
+  ws: 8.21.1
 minimumReleaseAgeExclude:
   - '@paperclipai/adapter-acpx-local@2026.626.0'
   - '@paperclipai/adapter-claude-local@2026.626.0'
@@ -69,3 +80,21 @@ minimumReleaseAgeExclude:
   - '@paperclipai/server@2026.707.0'
   - '@paperclipai/shared@2026.707.0'
   - '@paperclipai/skills-catalog@2026.707.0'
+  - '@paperclipai/adapter-claude-local@2026.824.0'
+  - '@paperclipai/adapter-codex-local@2026.824.0'
+  - '@paperclipai/adapter-cursor-cloud@2026.824.0'
+  - '@paperclipai/adapter-cursor-local@2026.824.0'
+  - '@paperclipai/adapter-gemini-local@2026.824.0'
+  - '@paperclipai/adapter-grok-local@2026.824.0'
+  - '@paperclipai/adapter-openclaw-gateway@2026.824.0'
+  - '@paperclipai/adapter-opencode-local@2026.824.0'
+  - '@paperclipai/adapter-pi-local@2026.824.0'
+  - '@paperclipai/adapter-utils@2026.824.0'
+  - '@paperclipai/db@2026.824.0'
+  - '@paperclipai/hermes-paperclip-adapter@2026.824.0'
+  - '@paperclipai/plugin-sdk@2026.824.0'
+  - '@paperclipai/server@2026.824.0'
+  - '@paperclipai/shared@2026.824.0'
+  - '@paperclipai/skills-catalog@2026.824.0'
+  - '@paperclipai/teams-catalog@2026.824.0'
+  - '@paperclipai/ui@2026.824.0'

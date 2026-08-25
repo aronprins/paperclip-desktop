@@ -144,7 +144,7 @@ function handleOutput(chunk, resolve, reject, timeout) {
   settled = true;
   const port = Number.parseInt(match[1], 10);
   const url = `http://127.0.0.1:${port}`;
-  void requestOk(`${url}/get-session`)
+  void verifyServerEndpoints(url)
     .then(() => {
       clearTimeout(timeout);
       resolve({ url });
@@ -153,6 +153,12 @@ function handleOutput(chunk, resolve, reject, timeout) {
       clearTimeout(timeout);
       reject(new Error(`Server started but smoke endpoint failed: ${error.message}\n${tailOutput()}`));
     });
+}
+
+async function verifyServerEndpoints(url) {
+  await requestOk(`${url}/get-session`);
+  await requestNonEmptyJsonArray(`${url}/api/skills/catalog`);
+  await requestNonEmptyJsonArray(`${url}/api/teams/catalog`);
 }
 
 function findProductionPathLeak(output) {
@@ -184,6 +190,36 @@ function requestOk(url) {
       } else {
         reject(new Error(`${url} returned HTTP ${response.statusCode}`));
       }
+    });
+    request.on("timeout", () => {
+      request.destroy(new Error(`${url} timed out`));
+    });
+    request.on("error", reject);
+  });
+}
+
+function requestNonEmptyJsonArray(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, { timeout: 10_000 }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`${url} returned HTTP ${response.statusCode}`));
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (!Array.isArray(payload) || payload.length === 0) {
+            reject(new Error(`${url} did not return a non-empty JSON array`));
+            return;
+          }
+          resolve();
+        } catch (error) {
+          reject(new Error(`${url} returned invalid JSON: ${error.message}`));
+        }
+      });
     });
     request.on("timeout", () => {
       request.destroy(new Error(`${url} timed out`));

@@ -191,10 +191,22 @@ function verifyServerRuntimeDependencies(appPath) {
     throw new Error(`Packaged server is missing runtime dependencies: ${missing.join(", ")}`);
   }
 
+  const catalogManifests = [
+    join(nodeModulesDir, "@paperclipai", "skills-catalog", "generated", "catalog.json"),
+    join(nodeModulesDir, "@paperclipai", "teams-catalog", "generated", "catalog.json"),
+  ];
+  const missingCatalogManifests = catalogManifests.filter((manifestPath) => !existsSync(manifestPath));
+  if (missingCatalogManifests.length > 0) {
+    throw new Error(
+      `Packaged server is missing catalog manifests: ${missingCatalogManifests.join(", ")}`,
+    );
+  }
+
   return {
     path: relative(serverDir),
     dependencyCount: dependencies.length,
     uiDist: relative(uiIndexPath),
+    catalogManifests: catalogManifests.map(relative),
   };
 }
 

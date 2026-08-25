@@ -21,6 +21,11 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  installDarwinEsbuildBinary,
+  normalizeDarwinEsbuildBinaries,
+} from "./esbuild-normalization.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 
@@ -33,6 +38,11 @@ if (!serverVersion) {
   console.error("[prepare-server] @paperclipai/server not found in devDependencies");
   process.exit(1);
 }
+const teamsCatalogVersion = projectPkg.devDependencies["@paperclipai/teams-catalog"];
+if (!teamsCatalogVersion) {
+  console.error("[prepare-server] @paperclipai/teams-catalog not found in devDependencies");
+  process.exit(1);
+}
 
 const serverBundleOverrides = {
   ...(projectPkg.pnpm?.overrides ?? {}),
@@ -42,6 +52,9 @@ const serverBundleOverrides = {
 };
 
 console.log(`[prepare-server] Target server version: @paperclipai/server@${serverVersion}`);
+console.log(
+  `[prepare-server] Target teams catalog version: @paperclipai/teams-catalog@${teamsCatalogVersion}`,
+);
 
 const platform = process.platform;
 const nodePlatform = platform === "win32" ? "win32" : platform;
@@ -143,24 +156,6 @@ function validateMigrations(bundleServerDir) {
   }
 }
 
-function normalizeEsbuildBinary(bundleServerDir, arch) {
-  const packageArch = arch === "x64" ? "x64" : "arm64";
-  const esbuildBin = path.join(bundleServerDir, "node_modules", "esbuild", "bin", "esbuild");
-  const archEsbuildBin = path.join(
-    bundleServerDir,
-    "node_modules",
-    "@esbuild",
-    `darwin-${packageArch}`,
-    "bin",
-    "esbuild",
-  );
-
-  if (!existsSync(esbuildBin) || !existsSync(archEsbuildBin)) return;
-
-  cpSync(archEsbuildBin, esbuildBin);
-  console.log(`[prepare-server] Normalized esbuild binary for darwin-${packageArch}.`);
-}
-
 for (const arch of targetArches) {
   const variant = `${ebPlatform}-${arch}`;
   const stagingDir = path.join(stagingRootDir, variant);
@@ -175,7 +170,10 @@ for (const arch of targetArches) {
     JSON.stringify(
       {
         private: true,
-        dependencies: { "@paperclipai/server": serverVersion },
+        dependencies: {
+          "@paperclipai/server": serverVersion,
+          "@paperclipai/teams-catalog": teamsCatalogVersion,
+        },
         overrides: serverBundleOverrides,
       },
       null,
@@ -223,7 +221,23 @@ for (const arch of targetArches) {
         fixDylibSymlinks(libDir);
       }
     }
-    normalizeEsbuildBinary(bundleServerDir, arch);
+    const esbuildCacheRoot = path.join(stagingDir, ".paperclip-esbuild-platform");
+    const normalizedEsbuildTargets = normalizeDarwinEsbuildBinaries({
+      bundleServerDir,
+      arch,
+      resolvePlatformBinary: ({ version }) =>
+        installDarwinEsbuildBinary({
+          arch,
+          version,
+          cacheRootDir: esbuildCacheRoot,
+          execFileSync,
+        }),
+    });
+    for (const target of normalizedEsbuildTargets) {
+      console.log(
+        `[prepare-server] Normalized ${path.relative(bundleServerDir, target.binaryPath)} for darwin-${arch}.`,
+      );
+    }
   }
 
   console.log(`[prepare-server] Scanning ${variant} bundle for Finder duplicate files...`);

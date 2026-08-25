@@ -454,11 +454,18 @@ function resolvePaperclipHome(): string {
   });
 }
 
+function resolveTeamsCatalogDir(root: string): string {
+  return app.isPackaged
+    ? path.join(root, "server", "node_modules", "@paperclipai", "teams-catalog")
+    : path.join(root, "node_modules", "@paperclipai", "teams-catalog");
+}
+
 function startServer(port: number): ChildProcess {
   const root = getAppRoot();
   const isWindows = process.platform === "win32";
   const enrichedPath = resolveShellPath();
   const paperclipHome = resolvePaperclipHome();
+  const teamsCatalogDir = resolveTeamsCatalogDir(root);
   console.log(`Using PAPERCLIP_HOME: ${paperclipHome}`);
 
   const child = app.isPackaged
@@ -470,6 +477,7 @@ function startServer(port: number): ChildProcess {
           NODE_ENV: "production",
           PORT: String(port),
           PAPERCLIP_HOME: paperclipHome,
+          PAPERCLIP_TEAMS_CATALOG_DIR: teamsCatalogDir,
           PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -483,6 +491,7 @@ function startServer(port: number): ChildProcess {
           NODE_ENV: "development",
           PORT: String(port),
           PAPERCLIP_HOME: paperclipHome,
+          PAPERCLIP_TEAMS_CATALOG_DIR: teamsCatalogDir,
           PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         },
         stdio: ["ignore", "pipe", "pipe"],
