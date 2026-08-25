@@ -9,7 +9,7 @@ on:
         default: v1.0.0
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: notarize-submit-${{ github.event.inputs.tag }}
@@ -70,7 +70,10 @@ jobs:
             gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
               --jq '.[] | select(.tag_name == env.NOTARIZE_TAG) | .id' | head -n 1
           )"
-          test -n "$release_id"
+          if [ -z "$release_id" ]; then
+            echo "Draft or published release not found: $NOTARIZE_TAG" >&2
+            exit 1
+          fi
           while IFS=$'\t' read -r asset_id asset_name; do
             case "$asset_name" in
               *-mac.zip)
