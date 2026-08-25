@@ -39,10 +39,22 @@ jobs:
           else
             download_pattern='*-mac.zip'
           fi
-          gh release download "$RELEASE_TAG" \
-            --repo "${{ github.repository }}" \
-            --pattern "$download_pattern" \
-            --dir smoke-input
+          release_id="$(
+            gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.RELEASE_TAG) | .id' | head -n 1
+          )"
+          test -n "$release_id"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            case "$asset_name" in
+              $download_pattern)
+                gh api "repos/${{ github.repository }}/releases/assets/$asset_id" \
+                  -H 'Accept: application/octet-stream' > "smoke-input/$asset_name"
+                ;;
+            esac
+          done < <(
+            gh api --paginate "repos/${{ github.repository }}/releases/$release_id/assets?per_page=100" \
+              --jq '.[] | [.id, .name] | @tsv'
+          )
           if [ "$RELEASE_ARCH" = "arm64" ]; then
             zip_path="$(find smoke-input -type f -name '*arm64-mac.zip' | head -n 1)"
           else

@@ -66,10 +66,22 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p notarization-input
-          gh release download "${NOTARIZE_TAG}" \
-            --repo "${{ github.repository }}" \
-            --pattern "*-mac.zip" \
-            --dir notarization-input
+          release_id="$(
+            gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.NOTARIZE_TAG) | .id' | head -n 1
+          )"
+          test -n "$release_id"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            case "$asset_name" in
+              *-mac.zip)
+                gh api "repos/${{ github.repository }}/releases/assets/$asset_id" \
+                  -H 'Accept: application/octet-stream' > "notarization-input/$asset_name"
+                ;;
+            esac
+          done < <(
+            gh api --paginate "repos/${{ github.repository }}/releases/$release_id/assets?per_page=100" \
+              --jq '.[] | [.id, .name] | @tsv'
+          )
 
       - name: Submit x64 and arm64 ZIPs
         env:
