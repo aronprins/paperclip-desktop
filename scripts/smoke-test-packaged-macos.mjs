@@ -96,9 +96,12 @@ function runSmokeTest() {
       reject(new Error(`Timed out after ${timeoutMs}ms waiting for packaged server startup.\n${tailOutput()}`));
     }, timeoutMs);
 
+    const childEnv = { ...process.env };
+    delete childEnv.ELECTRON_RUN_AS_NODE;
+
     child = spawn(executablePath, [], {
       env: {
-        ...process.env,
+        ...childEnv,
         PAPERCLIP_DESKTOP_REQUIRE_ISOLATED_DATA: "1",
         PAPERCLIP_DESKTOP_USER_DATA_DIR: userDataDir,
         PAPERCLIP_HOME: paperclipHome,
