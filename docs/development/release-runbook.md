@@ -6,14 +6,14 @@ It documents the safe default stable release path now in use:
 
 1. set the desktop version and pin the desired upstream Paperclip version
 2. build signed staged macOS artifacts locally
-3. verify the exact built artifacts locally
-4. create or update a draft GitHub release for staging
+3. verify both builds and smoke-test the host-native artifact locally
+4. create or update a draft GitHub release and smoke-test the other architecture on native CI
 5. submit the staged mac ZIPs to Apple notarization without waiting
 6. monitor notarization status separately
 7. staple the approved app bundles locally
 8. repackage final notarized ZIP/DMG assets from the stapled apps
-9. replace the draft release assets with the notarized versions
-10. publish the release only after the final notarized assets are uploaded
+9. verify the final notarized outputs
+10. replace the draft assets, smoke-test the final ZIPs natively, and publish only after every check passes
 
 This avoids:
 
@@ -46,6 +46,7 @@ Safe default policy for stable mac releases:
 Manual workflows available in GitHub Actions:
 
 - `Release Desktop`
+- `Smoke Packaged macOS Release`
 - `Submit macOS Release for Notarization`
 - `Check macOS Notarization Status`
 
@@ -227,25 +228,32 @@ codesign -dvv 'release/local-macos/arm64/mac-arm64/Paperclip Desktop.app'
 
 The authority should be your `Developer ID Application` identity.
 
-## Step 3: Verify The Exact Built Artifacts Locally
+## Step 3: Verify Both Builds And Smoke-Test The Host-Native Artifact
 
 Before anything is uploaded:
 
-- run the packaged-app smoke test against the exact packaged `.app` bundles
-- confirm the upstream Paperclip version in the built payload
-- confirm the app version shown in the bundle metadata matches `package.json`
+- confirm the upstream Paperclip version in both built payloads
+- confirm the app version shown in both bundle metadata files matches `package.json`
 - confirm signatures are valid on both architectures
+- run the packaged-app smoke test against the exact `.app` bundle that matches the local Mac's native architecture
 
 Use the smoke-test script instead of launching release candidates directly from Finder or a terminal:
 
 ```bash
+uname -m
+
+# Run this on an x86_64 Mac
 pnpm smoke:mac:packaged -- --app 'release/local-macos/x64/mac/Paperclip Desktop.app'
+
+# Run this on an arm64 Mac
 pnpm smoke:mac:packaged -- --app 'release/local-macos/arm64/mac-arm64/Paperclip Desktop.app'
 ```
 
-The smoke test creates temporary `userData` and `PAPERCLIP_HOME` directories, sets `PAPERCLIP_DESKTOP_REQUIRE_ISOLATED_DATA=1`, waits for `Server listening on`, checks `/get-session`, and fails if the packaged app logs a production Paperclip data path.
+Do not treat Rosetta or another translation layer as native smoke coverage. A normal release machine only runs one of the two commands above; Step 4 uses a native GitHub-hosted runner for the other architecture.
 
-Do not submit or publish artifacts you have not tested locally.
+The smoke test creates temporary `userData` and `PAPERCLIP_HOME` directories, sets `PAPERCLIP_DESKTOP_REQUIRE_ISOLATED_DATA=1`, sanitizes inherited Electron runtime flags, waits for `Server listening on`, checks `/get-session`, `/api/skills/catalog`, and `/api/teams/catalog`, and fails if the packaged app logs a production Paperclip data path.
+
+Do not submit or publish until both architectures have passed this smoke test on matching native hardware, either locally or through the workflow in Step 4.
 
 ## Step 4: Create A Draft GitHub Release For Staging
 
@@ -291,6 +299,24 @@ Why:
 
 `latest-mac.yml` is what makes mac auto-update discover the release. Publishing it too early can cause clients to download a signed but not-yet-notarized build.
 
+### Smoke The Other Architecture On Native CI
+
+After the draft ZIPs are uploaded, smoke-test the architecture that is unavailable on the local release machine. For example, from an `x86_64` release machine, dispatch the `arm64` smoke:
+
+```bash
+gh workflow run smoke-packaged-macos.yml \
+  --ref v<DESKTOP_VERSION> \
+  -f tag=v<DESKTOP_VERSION> \
+  -f arch=arm64
+
+gh run list --workflow 'Smoke Packaged macOS Release' --limit 1
+gh run watch <RUN_ID> --interval 10
+```
+
+From an `arm64` release machine, use `-f arch=x64` instead. If neither architecture can be smoke-tested locally, dispatch the workflow once per architecture.
+
+The workflow downloads the ZIP from the draft release, verifies that the runner architecture matches the requested build, extracts the packaged app, and runs the same isolated smoke-test script. Both architectures must have green native smoke evidence before notarization begins.
+
 ## Step 5: Submit To Apple Notarization Without Waiting
 
 Preferred path:
@@ -317,6 +343,8 @@ This workflow:
 - downloads the draft release ZIP assets
 - submits `x64` and `arm64` ZIPs to Apple with `--no-wait`
 - stores the Apple submission IDs as an artifact
+
+Draft-release access is an intentional implementation detail in both this workflow and `smoke-packaged-macos.yml`. They enumerate releases through the GitHub Releases API, then download the matching assets by asset ID, and retain `contents: write` permission so the workflow token can access drafts. Do not replace that path with `gh release download <TAG>` or reduce the permission without testing against an actual draft release; the tag-based download path does not resolve draft releases in this staging flow.
 
 ## Step 6: Monitor Apple Status
 
@@ -468,9 +496,41 @@ Expected final artifacts:
 - `latest-mac.yml`
 - `verification-summary.json`
 
-## Step 10: Replace The Draft Release Assets And Publish The Release
+## Step 10: Stage Final Assets, Smoke The Downloadable ZIPs, And Publish
 
-Update release notes to reflect notarization completion, upload the stapled assets including `latest-mac.yml`, then publish the draft release:
+Update the release notes to reflect notarization completion and replace the draft assets with the stapled versions, including `latest-mac.yml`. Keep the release as a draft during this upload:
+
+```bash
+pnpm publish-release-assets:mac -- \
+  --mode final \
+  --tag v<DESKTOP_VERSION> \
+  --input-dir release/notarized-macos/release-assets \
+  --notes-file /path/to/final-notes.md
+```
+
+Because the release is still a draft, uploading `latest-mac.yml` at this point does not expose the update publicly.
+
+Extract and smoke-test the exact final ZIP for the local Mac's native architecture:
+
+On an `x86_64` Mac:
+
+```bash
+FINAL_SMOKE_X64_DIR="$(mktemp -d)"
+ditto -x -k 'release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-mac.zip' "$FINAL_SMOKE_X64_DIR"
+pnpm smoke:mac:packaged -- --app "$FINAL_SMOKE_X64_DIR/Paperclip Desktop.app"
+```
+
+On an `arm64` Mac:
+
+```bash
+FINAL_SMOKE_ARM64_DIR="$(mktemp -d)"
+ditto -x -k 'release/notarized-macos/release-assets/Paperclip-Desktop-<DESKTOP_VERSION>-arm64-mac.zip' "$FINAL_SMOKE_ARM64_DIR"
+pnpm smoke:mac:packaged -- --app "$FINAL_SMOKE_ARM64_DIR/Paperclip Desktop.app"
+```
+
+Dispatch `smoke-packaged-macos.yml` again for the other architecture, using the same command as Step 4. The workflow now downloads the replaced, final ZIP from the draft release. Both final architectures must pass on native hardware.
+
+Do not modify or regenerate `release/notarized-macos/release-assets` after these smoke tests. Publish the draft by rerunning the final upload from that unchanged directory with `--publish`:
 
 ```bash
 pnpm publish-release-assets:mac -- \
@@ -536,17 +596,19 @@ For the common case, use this order:
 1. set the desktop version and upstream version
 2. `pnpm release:mac:local:x64`
 3. `pnpm release:mac:local:arm64`
-4. smoke-test the exact local `.app` bundles with `pnpm smoke:mac:packaged -- --app '<APP_PATH>'`
+4. smoke-test the exact host-native local `.app` bundle with `pnpm smoke:mac:packaged -- --app '<APP_PATH>'`
 5. create and push `v<DESKTOP_VERSION>`
 6. prepare `release/local-macos/release-assets`
 7. create or update a draft release and upload ZIP/DMG assets only
-8. submit ZIPs for notarization asynchronously
-9. monitor until both are `Accepted`
-10. staple the exact local `.app` bundles
-11. repackage notarized ZIP/DMG
-12. prepare the final merged mac updater bundle, optionally with `--staging-percentage <N>`
-13. upload final assets including `latest-mac.yml`
-14. publish the draft release
+8. smoke-test the other architecture with `smoke-packaged-macos.yml` on a native runner
+9. submit ZIPs for notarization asynchronously
+10. monitor until both are `Accepted`
+11. staple the exact local `.app` bundles
+12. repackage notarized ZIP/DMG
+13. prepare and verify the final merged mac updater bundle, optionally with `--staging-percentage <N>`
+14. upload final assets including `latest-mac.yml` while keeping the release as a draft
+15. smoke-test the exact final ZIPs on native hardware, locally for the host architecture and in CI for the other
+16. publish the draft release from the unchanged, verified final asset directory
 
 ## Guardrails
 
@@ -558,17 +620,21 @@ For the common case, use this order:
 - Do not publish macOS assets until `scripts/verify-macos-release.mjs` passes for each architecture; it verifies that packaged native Mach-O payloads match the bundled Node architecture, which catches cases like an arm64 app shipping an x64 `.node` binding.
 - Do not publish macOS assets unless the verifier confirms `Contents/Resources/app-server/server/ui-dist/index.html` is present; missing UI assets make the server boot in API-only mode and Electron shows a 404 error page.
 - Do not publish `latest-mac.yml` until the stapled outputs have passed local verification.
+- Do not begin notarization until both staged architectures have passed smoke testing on matching native hardware.
+- Do not publish until both final downloadable ZIPs have passed smoke testing on matching native hardware.
 - Do not publish a stable GitHub release before the final notarized assets are uploaded.
 - Do not use a public release plus `latest-mac.yml` as a staging mechanism.
 - Do not run `Release Desktop` against a stable version tag unless you intentionally want it to publish final release assets.
 - Do not change `stagingPercentage` on pre-notarization assets.
 - Do not launch packaged release candidates directly against normal app data. Use `scripts/smoke-test-packaged-macos.mjs`, which requires isolated `userData` and `PAPERCLIP_HOME` paths.
+- Do not replace the draft-asset API download in the smoke or notarization workflows with `gh release download <TAG>` unless the replacement is proven against a draft release.
 
 ## File References
 
 Primary scripts and workflows:
 
 - `.github/workflows/release.yml`
+- `.github/workflows/smoke-packaged-macos.yml`
 - `.github/workflows/notarize-submit.yml`
 - `.github/workflows/notarize-status.yml`
 - `scripts/release-macos-local.mjs`
