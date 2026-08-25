@@ -1,0 +1,67 @@
+name: Smoke Packaged macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft or published GitHub release tag containing the packaged ZIP
+        required: true
+      arch:
+        description: macOS architecture to smoke test
+        required: true
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - x64
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Smoke ${{ github.event.inputs.arch }} packaged app
+    runs-on: ${{ github.event.inputs.arch == 'arm64' && 'macos-15' || 'macos-15-intel' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download packaged app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_ARCH: ${{ github.event.inputs.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-input smoke-app
+          if [ "$RELEASE_ARCH" = "arm64" ]; then
+            download_pattern='*arm64-mac.zip'
+          else
+            download_pattern='*-mac.zip'
+          fi
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "$download_pattern" \
+            --dir smoke-input
+          if [ "$RELEASE_ARCH" = "arm64" ]; then
+            zip_path="$(find smoke-input -type f -name '*arm64-mac.zip' | head -n 1)"
+          else
+            zip_path="$(find smoke-input -type f -name '*-mac.zip' ! -name '*arm64*' | head -n 1)"
+          fi
+          test -n "$zip_path"
+          ditto -x -k "$zip_path" smoke-app
+
+      - name: Verify native runner and launch packaged app
+        env:
+          RELEASE_ARCH: ${{ github.event.inputs.arch }}
+        run: |
+          set -euo pipefail
+          host_arch="$(uname -m)"
+          expected_arch="$RELEASE_ARCH"
+          if [ "$expected_arch" = "x64" ]; then
+            expected_arch='x86_64'
+          fi
+          test "$host_arch" = "$expected_arch"
+          app_path="$(find smoke-app -maxdepth 2 -type d -name '*.app' | head -n 1)"
+          test -n "$app_path"
+          node scripts/smoke-test-packaged-macos.mjs --app "$app_path"
