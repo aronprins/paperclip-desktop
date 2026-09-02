@@ -245,7 +245,7 @@ for (const arch of targetArches) {
   validateMigrations(bundleServerDir);
 }
 
-const NODE_VERSION = "v22.15.0";
+const NODE_VERSION = "v24.11.0";
 const arches = platform === "darwin" ? ["x64", "arm64"] : ["x64"];
 const nodeDownloadPlatform = platform === "win32" ? "win" : platform;
 const nodeBinDir = path.join(projectRoot, "build", "node-bin");
