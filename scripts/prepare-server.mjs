@@ -253,12 +253,22 @@ const nodeBinDir = path.join(projectRoot, "build", "node-bin");
 for (const arch of arches) {
   const destDir = path.join(nodeBinDir, `${ebPlatform}-${arch}`);
   const destBin = path.join(destDir, platform === "win32" ? "node.exe" : "node");
+  const versionMarker = path.join(destDir, ".node-version");
 
-  if (existsSync(destBin)) {
+  const cachedVersion = existsSync(versionMarker)
+    ? readFileSync(versionMarker, "utf8").trim()
+    : null;
+  if (existsSync(destBin) && cachedVersion === NODE_VERSION) {
     console.log(`[prepare-server] Node ${NODE_VERSION} ${arch} already downloaded, skipping`);
     continue;
   }
 
+  if (existsSync(destDir)) {
+    console.log(
+      `[prepare-server] Replacing cached Node ${cachedVersion ?? "of unknown version"} for ${arch}`,
+    );
+    rmSync(destDir, { recursive: true, force: true });
+  }
   mkdirSync(destDir, { recursive: true });
 
   const ext = platform === "win32" ? "zip" : "tar.gz";
@@ -295,6 +305,7 @@ for (const arch of arches) {
   }
 
   rmSync(archivePath, { force: true });
+  writeFileSync(versionMarker, `${NODE_VERSION}\n`);
   console.log(`[prepare-server] Node ${NODE_VERSION} ${arch} ready at ${destBin}`);
 }
 
