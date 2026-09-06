@@ -6,7 +6,7 @@
  * into the app.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -181,20 +181,14 @@ for (const arch of targetArches) {
     ),
   );
 
-  execFileSync(
-    "npm",
-    ["install", "--production", `--os=${nodePlatform}`, `--cpu=${arch}`, `--arch=${arch}`],
-    {
-      cwd: stagingDir,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        npm_config_arch: arch,
-        npm_config_platform: nodePlatform,
-        npm_config_target_arch: arch,
-      },
-    },
-  );
+  const npmInstallCmd = `npm install --production --os=${nodePlatform} --cpu=${arch} --arch=${arch}`;
+  if (process.platform === "win32") {
+    execSync(npmInstallCmd, { cwd: stagingDir, stdio: "inherit", env: { ...process.env, npm_config_arch: arch, npm_config_platform: nodePlatform, npm_config_target_arch: arch } });
+  } else {
+    execFileSync("npm", ["install", "--production", `--os=${nodePlatform}`, `--cpu=${arch}`, `--arch=${arch}`], {
+      cwd: stagingDir, stdio: "inherit", env: { ...process.env, npm_config_arch: arch, npm_config_platform: nodePlatform, npm_config_target_arch: arch },
+    });
+  }
 
   console.log(`[prepare-server] Assembling server bundle for ${variant}...`);
   mkdirSync(bundleServerDir, { recursive: true });
@@ -279,21 +273,13 @@ for (const arch of arches) {
   console.log(`[prepare-server] Downloading Node ${NODE_VERSION} for ${nodeDownloadPlatform}-${arch}...`);
 
   if (platform === "win32") {
-    execFileSync(
-      "powershell",
-      ["-NoProfile", "-Command", "Invoke-WebRequest -Uri $args[0] -OutFile $args[1]", url, archivePath],
-      { stdio: "inherit" },
-    );
+    execSync(`powershell -NoProfile -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${archivePath}'"`, { stdio: "inherit" });
   } else {
     execFileSync("curl", ["-fsSL", "-o", archivePath, url], { stdio: "inherit" });
   }
 
   if (platform === "win32") {
-    execFileSync(
-      "powershell",
-      ["-NoProfile", "-Command", "Expand-Archive -Path $args[0] -DestinationPath $args[1] -Force", archivePath, destDir],
-      { stdio: "inherit" },
-    );
+    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: "inherit" });
     cpSync(path.join(destDir, archiveName, "node.exe"), destBin);
     rmSync(path.join(destDir, archiveName), { recursive: true, force: true });
   } else {

@@ -261,6 +261,8 @@ function findNodeBinary(): string {
     // ignore
   }
 
+
+  // macOS / Linux fallbacks
   const candidates: string[] = [];
   const home = process.env.HOME ?? "";
   const nvmDir = process.env.NVM_DIR ?? path.join(home, ".nvm");
@@ -287,6 +289,11 @@ function findNodeBinary(): string {
 }
 
 function resolveShellPath(): string {
+  // ponytail: on Windows, process.env.PATH is authoritative; no login shell needed.
+  if (process.platform === "win32") {
+    return process.env.PATH ?? "";
+  }
+
   const fallbackDirs = [
     "/usr/local/bin",
     "/opt/homebrew/bin",
@@ -332,6 +339,7 @@ function resolveShellPath(): string {
     ? basePath + path.delimiter + missing.join(path.delimiter)
     : basePath;
 }
+
 
 function getPidFilePath(): string {
   return path.join(app.getPath("userData"), PID_FILE_NAME);
@@ -483,7 +491,7 @@ function startServer(port: number): ChildProcess {
         stdio: ["ignore", "pipe", "pipe"],
         detached: !isWindows,
       })
-    : spawn("node", [path.join(root, "node_modules", "@paperclipai", "server", "dist", "index.js")], {
+    : spawn("node", [path.join(root, "build", "server-bundle", `${process.platform === "win32" ? "win" : process.platform}-${process.arch}`, "server", "dist", "index.js")], {
         cwd: root,
         env: {
           ...process.env,
@@ -1530,6 +1538,7 @@ function registerLauncherIpc(): void {
 // ---------------------------------------------------------------------------
 
 function rebuildAppMenu(): void {
+  if (process.platform !== "darwin") return;
   const template: MenuItemConstructorOptions[] = [
     {
       label: "Paperclip",
@@ -1685,7 +1694,11 @@ app.whenReady().then(async () => {
   killOrphanedServer();
   connectionStore = new ConnectionStore(getConnectionsFilePath(app.getPath("userData")));
   registerLauncherIpc();
-  rebuildAppMenu();
+  if (process.platform === "darwin") {
+    rebuildAppMenu();
+  } else {
+    Menu.setApplicationMenu(null);
+  }
 
   const startupProfileId = connectionStore.getStartupProfileId();
   if (startupProfileId) {
@@ -1761,7 +1774,11 @@ app.on("before-quit", async (event) => {
   app.quit();
 });
 
-for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+const shutdownSignals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
+if (process.platform !== "win32") {
+  shutdownSignals.push("SIGHUP");
+}
+for (const signal of shutdownSignals) {
   process.on(signal, () => {
     isQuitting = true;
     void killServer().then(() => app.quit());
