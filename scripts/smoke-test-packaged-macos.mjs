@@ -139,7 +139,9 @@ function handleOutput(chunk, resolve, reject, timeout) {
     return;
   }
 
-  const match = output.match(/Server listening on\s+(?:127\.0\.0\.1|localhost):(\d+)/);
+  const match = output.match(
+    /(?:Server listening on|Server startup recovery complete on)\s+(?:https?:\/\/)?(?:127\.0\.0\.1|localhost):(\d+)/,
+  );
   if (!match || settled) {
     return;
   }
