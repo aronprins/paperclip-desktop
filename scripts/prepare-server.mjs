@@ -156,6 +156,47 @@ function validateMigrations(bundleServerDir) {
   }
 }
 
+function dependencyDir(nodeModulesDir, dependency) {
+  return path.join(nodeModulesDir, ...dependency.split("/"));
+}
+
+function promoteServerRuntimeDependencies(stagingDir, serverPkgDir, bundleServerDir) {
+  const serverPackageJson = JSON.parse(
+    readFileSync(path.join(serverPkgDir, "package.json"), "utf8"),
+  );
+  const dependencies = Object.keys(serverPackageJson.dependencies ?? {}).sort();
+  const stagingNodeModules = path.join(stagingDir, "node_modules");
+  const serverNodeModules = path.join(serverPkgDir, "node_modules");
+  const bundleNodeModules = path.join(bundleServerDir, "node_modules");
+  const missing = [];
+
+  for (const dependency of dependencies) {
+    const nestedSource = dependencyDir(serverNodeModules, dependency);
+    const hoistedSource = dependencyDir(stagingNodeModules, dependency);
+    const source = existsSync(nestedSource) ? nestedSource : hoistedSource;
+
+    if (!existsSync(source)) {
+      missing.push(dependency);
+      continue;
+    }
+
+    const target = dependencyDir(bundleNodeModules, dependency);
+    rmSync(target, { recursive: true, force: true });
+    mkdirSync(path.dirname(target), { recursive: true });
+    cpSync(source, target, { recursive: true });
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Installed @paperclipai/server is missing runtime dependencies: ${missing.join(", ")}`,
+    );
+  }
+
+  console.log(
+    `[prepare-server] Promoted ${dependencies.length} server runtime dependencies for root resolution.`,
+  );
+}
+
 for (const arch of targetArches) {
   const variant = `${ebPlatform}-${arch}`;
   const stagingDir = path.join(stagingRootDir, variant);
@@ -210,6 +251,7 @@ for (const arch of targetArches) {
   }
 
   cpSync(path.join(stagingDir, "node_modules"), path.join(bundleServerDir, "node_modules"), { recursive: true });
+  promoteServerRuntimeDependencies(stagingDir, serverPkgDir, bundleServerDir);
   rmSync(path.join(bundleServerDir, "node_modules", ".bin"), { recursive: true, force: true });
 
   if (platform === "darwin") {
