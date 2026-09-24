@@ -38,6 +38,7 @@ import {
 import {
   isNavigationAllowed,
   localPartition,
+  newWindowPolicyAction,
   remotePartitionForProfile,
   shouldOpenExternally,
 } from "./connection/window-policy";
@@ -885,7 +886,7 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
 
     event.preventDefault();
     if (shouldOpenExternally(targetUrl, allowedOrigin)) {
-      void shell.openExternal(targetUrl);
+      void shell.openExternal(targetUrl).catch(() => undefined);
     }
   });
 
@@ -896,13 +897,16 @@ function applyWindowPolicy(win: BrowserWindow, allowedOrigin: string): void {
 
     event.preventDefault();
     if (shouldOpenExternally(targetUrl, allowedOrigin)) {
-      void shell.openExternal(targetUrl);
+      void shell.openExternal(targetUrl).catch(() => undefined);
     }
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (shouldOpenExternally(url, allowedOrigin)) {
-      void shell.openExternal(url);
+    const action = newWindowPolicyAction(url, allowedOrigin);
+    if (action === "navigate-in-app") {
+      void win.webContents.loadURL(url).catch(() => undefined);
+    } else if (action === "open-externally") {
+      void shell.openExternal(url).catch(() => undefined);
     }
     return { action: "deny" };
   });
