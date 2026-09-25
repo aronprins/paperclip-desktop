@@ -18,7 +18,7 @@
 
 ## What is this?
 
-**Paperclip Desktop** is an unofficial [Electron](https://www.electronjs.org/) wrapper around [Paperclip](https://github.com/paperclipai/paperclip). It bundles Paperclip (via the official `@paperclipai/server` npm package) inside a native desktop app for macOS. Windows and Linux builds are coming soon.
+**Paperclip Desktop** is an unofficial [Electron](https://www.electronjs.org/) wrapper around [Paperclip](https://github.com/paperclipai/paperclip). It bundles Paperclip (via the official `@paperclipai/server` npm package) inside a native desktop app for macOS, Windows, and Linux.
 
 The goal is simple: **make running Paperclip as easy as opening an app.**
 
@@ -27,8 +27,7 @@ The goal is simple: **make running Paperclip as easy as opening an app.**
 - 📦 **Paperclip inside** — ships an unmodified build of the upstream Paperclip server and UI. What you get in the app is exactly what you'd get by cloning and running the main repo.
 - 🔄 **Auto-updates** — pulls new desktop releases automatically via GitHub Releases.
 - 🖥 **Native menus, windowing, and system tray** — the Paperclip UI, but as a real desktop app.
-
-Under the hood, the app can either:
+- 🪟 **Cross-platform** — macOS (Apple Silicon + Intel), Windows (x64), and Linux (x64).
 
 1. Run the embedded local server flow
 2. Or verify a remote Paperclip origin via `/api/health` and `/api/auth/get-session` before loading it in a restricted remote-safe Electron window
@@ -59,14 +58,10 @@ This is an **independent community distribution**. It is not an official Papercl
 Download the latest installer for your platform from the [Releases page](https://github.com/aronprins/paperclip-desktop/releases):
 
 - **macOS** — `.dmg` (Apple Silicon and Intel)
-- **Windows** — _coming soon_
-- **Linux** — _coming soon_
+- **Windows** — `.exe` NSIS installer (x64)
+- **Linux** — `.AppImage` or `.deb` (x64)
 
 Open the app. Paperclip starts automatically and the dashboard opens in the app window. That's it.
-
-### Prefer the original?
-
-If you'd rather run Paperclip yourself from source (no desktop wrapper), follow the upstream instructions:
 
 ```bash
 npx paperclipai onboard --yes
@@ -99,6 +94,8 @@ pnpm build-ui          # Stage the Paperclip UI
 pnpm pack              # Build an unpacked app directory (no installer)
 pnpm dist              # Build full installers for the current platform
 pnpm dist:mac          # macOS (.dmg + .zip, signed/notarized via local script)
+pnpm dist:win          # Windows (.exe NSIS installer + portable)
+pnpm dist:linux        # Linux (.AppImage + .deb)
 ```
 
 Key files:
@@ -108,8 +105,8 @@ Key files:
 - `src/launcher-html.ts` — Internal launcher UI for the chooser, remote connect flow, saved connections, and local boot states
 - `src/preload.ts` — Preload script for the renderer
 - `src/updater.ts` — Auto-update wiring (`electron-updater` against GitHub Releases)
-- `electron-builder.yml` — Packaging config; bundles the `@paperclipai/server` npm package plus a platform-specific Node.js binary into `Resources/app-server/`
-- `scripts/` — Build and release automation (server staging, macOS notarization, etc.)
+- `electron-builder.yml` — Packaging config; bundles the `@paperclipai/server` npm package plus a platform-specific Node.js binary
+- `scripts/` — Build and release automation (server staging, packaging, notarization)
 
 <br/>
 
