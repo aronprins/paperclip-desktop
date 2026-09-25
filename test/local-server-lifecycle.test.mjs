@@ -8,6 +8,7 @@ const {
   shouldHandleTrackedServerExit,
   shouldKillSupersededServer,
   shouldRestorePreviousTrackedServer,
+  shouldStopPreviousServerBeforeRestart,
   shouldStopAttemptedServer,
 } = require("../dist/connection/local-server-lifecycle.js");
 
@@ -23,6 +24,12 @@ test("local server lifecycle ignores exits from superseded processes", () => {
 
   assert.equal(shouldHandleTrackedServerExit(next, next), true);
   assert.equal(shouldHandleTrackedServerExit(next, previous), false);
+});
+
+test("forced local restart stops the previous server before replacement startup", () => {
+  assert.equal(shouldStopPreviousServerBeforeRestart({ pid: 101 }, true), true);
+  assert.equal(shouldStopPreviousServerBeforeRestart({ pid: 101 }, false), false);
+  assert.equal(shouldStopPreviousServerBeforeRestart(null, true), false);
 });
 
 test("local server lifecycle kills the previous process after a successful swap", () => {
