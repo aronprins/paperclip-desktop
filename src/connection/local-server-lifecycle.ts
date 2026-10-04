@@ -24,6 +24,13 @@ export function shouldHandleTrackedServerExit(
   return isSameProcess(tracked, exited);
 }
 
+export function shouldStopPreviousServerBeforeRestart(
+  previous: ProcessLike | null | undefined,
+  forceRestart: boolean,
+): boolean {
+  return forceRestart && processPid(previous) !== null;
+}
+
 export function shouldKillSupersededServer(
   previous: ProcessLike | null | undefined,
   next: ProcessLike | null | undefined,

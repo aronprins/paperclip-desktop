@@ -24,6 +24,7 @@ import {
   shouldHandleTrackedServerExit,
   shouldKillSupersededServer,
   shouldRestorePreviousTrackedServer,
+  shouldStopPreviousServerBeforeRestart,
   shouldStopAttemptedServer,
 } from "./connection/local-server-lifecycle";
 import { probeLocalServerHealth } from "./connection/local-server-health";
@@ -1056,12 +1057,21 @@ async function bootLocal(options: {
   }
 
   const previousConnectionMode = currentConnection?.mode ?? null;
-  const previousServerProcess = previousConnectionMode === "local_embedded" ? serverProcess : null;
+  let previousServerProcess = previousConnectionMode === "local_embedded" ? serverProcess : null;
   let nextServerProcess: ChildProcess | null = null;
   await ensureLauncherWindow("local-boot");
 
   try {
     sendBootStatus("init", "Preparing environment...", 5);
+
+    // Embedded server processes share the same PostgreSQL child. During a
+    // forced restart, starting the replacement before stopping the previous
+    // process lets the replacement reuse that child; the later cleanup then
+    // kills the database underneath the replacement.
+    if (shouldStopPreviousServerBeforeRestart(previousServerProcess, options.forceRestart === true)) {
+      await killServer();
+      previousServerProcess = null;
+    }
 
     serverPort = await findFreePort(PREFERRED_PORT);
     if (bootId !== bootSequence) {
