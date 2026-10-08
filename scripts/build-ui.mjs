@@ -11,7 +11,7 @@
  * be simplified to just copy from node_modules.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, rmSync, cpSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -127,10 +127,19 @@ if (!cloneSuccess) {
 // ── Install dependencies and build UI ───────────────────────────────────────
 
 console.log("[build-ui] Installing upstream dependencies...");
-execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+const isWindows = process.platform === "win32";
+if (isWindows) {
+  execSync("pnpm install --frozen-lockfile", { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+} else {
+  execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+}
 
 console.log("[build-ui] Building UI...");
-execFileSync("pnpm", ["--filter", "@paperclipai/ui", "build"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+if (isWindows) {
+  execSync("pnpm --filter @paperclipai/ui build", { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+} else {
+  execFileSync("pnpm", ["--filter", "@paperclipai/ui", "build"], { cwd: cloneDir, stdio: "inherit", timeout: 300000 });
+}
 
 // ── Copy UI dist to server bundle ───────────────────────────────────────────
 
